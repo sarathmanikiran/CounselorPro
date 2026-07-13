@@ -13,7 +13,12 @@ import {
   CheckCircle2, 
   MapPin, 
   ShieldCheck,
-  Share2
+  Share2,
+  Users,
+  Copy,
+  MessageCircle,
+  Send,
+  Heart
 } from 'lucide-react';
 import { StudentProfile, WebOption, MockAllotmentResult, College } from '../types';
 import { COLLEGES_DB, getCollegeCutoff, getSeatProbability } from '../data/colleges';
@@ -39,6 +44,7 @@ export default function SuccessScreen({ profile, selectedOptions, optionsLength,
   const [allotment, setAllotment] = useState<MockAllotmentResult | null>(null);
   const [alternatives, setAlternatives] = useState<College[]>([]);
   const [copied, setCopied] = useState<boolean>(false);
+  const [linkCopied, setLinkCopied] = useState<boolean>(false);
 
   useEffect(() => {
     // 1. Core Mock Allotment Algorithm based on actual reservation and cutoff boundaries
@@ -159,8 +165,8 @@ DISCLAIMER: This is an AI-powered simulation matched against historical cutoff t
     document.body.removeChild(element);
   };
 
-  // Copy structured text summary to clipboard
-  const handleShareSimulationResult = () => {
+  // Copy structured text summary to clipboard or share using Web Share API
+  const handleShareSimulationResult = async () => {
     let resultText = `🌟 CounselorPro AI Counselling Simulation Result 🌟\n`;
     resultText += `--------------------------------------------------\n`;
     resultText += `🎓 Entrance Exam: ${profile.exam === 'TS_EAMCET' ? 'TS EAMCET (Telangana)' : 'AP EAPCET (Andhra Pradesh)'}\n`;
@@ -184,13 +190,76 @@ DISCLAIMER: This is an AI-powered simulation matched against historical cutoff t
     
     resultText += `--------------------------------------------------\n`;
     resultText += `🚀 Practice web options, check cutoffs, and prevent locking errors at CounselorPro!\n`;
+    resultText += `🔗 Try it yourself here: ${window.location.origin}\n`;
 
-    navigator.clipboard.writeText(resultText).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2500);
+    const copyToClipboardFallback = () => {
+      navigator.clipboard.writeText(resultText).then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2500);
+      }).catch(err => {
+        console.error('Failed to copy text: ', err);
+      });
+    };
+
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: 'My CounselorPro AI Counselling Simulation Result',
+          text: resultText,
+          url: window.location.origin,
+        });
+      } catch (err) {
+        console.log('Web Share interaction dismissed or failed:', err);
+        // Only copy to clipboard if the user didn't explicitly abort/cancel the share window
+        if (err instanceof Error && err.name !== 'AbortError') {
+          copyToClipboardFallback();
+        }
+      }
+    } else {
+      copyToClipboardFallback();
+    }
+  };
+
+  // Generate professional invitation text for classmates
+  const getShareText = () => {
+    const url = window.location.origin;
+    return `Hey! AP/TS EAPCET & EAMCET option entry is starting soon. Check out this free CounselorPro Web Options Simulator to check your seat allotment probability based on previous cutoffs and optimize your list. It prevents selection and locking errors: ${url}`;
+  };
+
+  const handleWhatsAppShare = () => {
+    const text = encodeURIComponent(getShareText());
+    window.open(`https://api.whatsapp.com/send?text=${text}`, '_blank');
+  };
+
+  const handleTelegramShare = () => {
+    const text = encodeURIComponent(getShareText());
+    window.open(`https://t.me/share/url?url=${encodeURIComponent(window.location.origin)}&text=${encodeURIComponent('AP/TS EAPCET & EAMCET Web Options Simulator - Check your seat allotment probability! Try it here:')}`, '_blank');
+  };
+
+  const handleCopyInviteLink = () => {
+    const text = getShareText();
+    navigator.clipboard.writeText(text).then(() => {
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 2500);
     }).catch(err => {
-      console.error('Failed to copy text: ', err);
+      console.error('Failed to copy link: ', err);
     });
+  };
+
+  const handleNativeShare = async () => {
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: 'CounselorPro AI Simulator',
+          text: 'AP & TS EAMCET/EAPCET Web Options Simulator - Check your seat allotment probability!',
+          url: window.location.origin,
+        });
+      } catch (err) {
+        console.log('Error sharing:', err);
+      }
+    } else {
+      handleCopyInviteLink();
+    }
   };
 
   return (
@@ -437,6 +506,76 @@ DISCLAIMER: This is an AI-powered simulation matched against historical cutoff t
         </div>
       </div>
 
+      {/* Share the Website with Friends / Trust Section */}
+      <div className="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-2xl shadow-md p-6 sm:p-8 space-y-6 mb-8 relative overflow-hidden" id="share-with-classmates-trust-card">
+        {/* Background visual detail */}
+        <div className="absolute right-0 bottom-0 translate-x-1/4 translate-y-1/4 w-64 h-64 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-white/10 pb-4">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <Users className="w-5 h-5 text-emerald-400" />
+              <span className="text-xs font-bold font-mono tracking-wider text-emerald-400 uppercase">Admissions Safety Initiative</span>
+            </div>
+            <h4 className="font-sans font-black text-xl text-white tracking-tight">
+              Help Classmates Avoid Option-Entry Mistakes!
+            </h4>
+          </div>
+          <div className="flex items-center gap-1.5 px-3 py-1 bg-white/10 border border-white/20 rounded-full text-xs font-medium font-mono text-white/80 self-start sm:self-auto shrink-0">
+            <Heart className="w-3.5 h-3.5 text-emerald-400 fill-emerald-400 animate-pulse" />
+            Empower Peers
+          </div>
+        </div>
+
+        <p className="text-slate-300 text-xs sm:text-sm leading-relaxed">
+          AP/TS EAPCET & EAMCET web option entry is notoriously tricky. A single misplaced college preference or overlooked cutoff boundary can cause candidates with excellent ranks to miss allotments. Share this simulator in your classmates' WhatsApp or Telegram groups so they can check their seat probabilities and practice risk-free!
+        </p>
+
+        {/* Sharing Options Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {/* WhatsApp share */}
+          <button
+            onClick={handleWhatsAppShare}
+            className="flex items-center justify-center gap-2 px-4 py-3 bg-[#25D366] hover:bg-[#20ba59] active:scale-[0.98] text-white font-bold text-xs sm:text-sm rounded-xl cursor-pointer transition-all shadow-xs"
+            title="Share on WhatsApp"
+          >
+            <MessageCircle className="w-4.5 h-4.5 fill-white text-[#25D366]" />
+            <span>WhatsApp Share</span>
+          </button>
+
+          {/* Telegram share */}
+          <button
+            onClick={handleTelegramShare}
+            className="flex items-center justify-center gap-2 px-4 py-3 bg-[#0088cc] hover:bg-[#0077b3] active:scale-[0.98] text-white font-bold text-xs sm:text-sm rounded-xl cursor-pointer transition-all shadow-xs"
+            title="Share on Telegram"
+          >
+            <Send className="w-4.5 h-4.5 fill-white text-[#0088cc]" />
+            <span>Telegram Share</span>
+          </button>
+
+          {/* Copy Link button */}
+          <button
+            onClick={handleCopyInviteLink}
+            className="flex items-center justify-center gap-2 px-4 py-3 bg-white/10 hover:bg-white/20 active:scale-[0.98] border border-white/10 text-white font-bold text-xs sm:text-sm rounded-xl cursor-pointer transition-all shadow-xs"
+            title="Copy Invite Link"
+          >
+            {linkCopied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4 text-white/80" />}
+            <span>{linkCopied ? 'Link Copied!' : 'Copy Invite Link'}</span>
+          </button>
+        </div>
+
+        {/* Native mobile share fallback button */}
+        <div className="text-center pt-1 border-t border-white/5">
+          <button
+            onClick={handleNativeShare}
+            className="inline-flex items-center gap-1.5 text-[11px] font-mono text-slate-400 hover:text-emerald-400 transition-colors cursor-pointer"
+          >
+            <Share2 className="w-3 h-3" />
+            <span>Use standard device sharing panel</span>
+          </button>
+        </div>
+      </div>
+
       {/* Action triggers */}
       <div className="flex flex-col sm:flex-row justify-center items-center gap-4">
         <button
@@ -453,7 +592,7 @@ DISCLAIMER: This is an AI-powered simulation matched against historical cutoff t
           className="w-full sm:w-auto px-6 py-3.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-750 font-semibold rounded-xl text-xs sm:text-sm flex items-center justify-center gap-2 cursor-pointer transition-colors"
         >
           {copied ? <Check className="w-4 h-4 text-emerald-600" /> : <Share2 className="w-4 h-4 text-slate-500" />}
-          {copied ? 'Copied to Clipboard!' : 'Share Result Summary'}
+          {copied ? 'Copied to Clipboard!' : 'Share Result'}
         </button>
 
         <button

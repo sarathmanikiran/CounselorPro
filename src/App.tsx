@@ -269,6 +269,17 @@ export default function App() {
                 <Database className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">DATABASE </span>ADMIN
               </button>
+
+              {step !== 'LANDING' && step !== 'SUCCESS' && (
+                <button
+                  onClick={handleSaveDraft}
+                  className="flex items-center gap-1 sm:gap-1.5 px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[10px] sm:text-xs font-semibold font-mono hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer shadow-2xs shrink-0"
+                  title="Save Current Draft"
+                >
+                  <Save className="w-3.5 h-3.5" />
+                  <span>SAVE DRAFT</span>
+                </button>
+              )}
             </div>
           </div>
         </header>
@@ -368,19 +379,7 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {/* Sticky Floating 'Save Draft' Action Button for Mobile Devices */}
-      {step !== 'LANDING' && step !== 'SUCCESS' && (
-        <div className="fixed bottom-6 right-6 md:hidden z-40">
-          <button
-            onClick={handleSaveDraft}
-            className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-bold px-4 py-3 rounded-full shadow-lg border border-emerald-500/20 cursor-pointer hover:scale-105 active:scale-95 transition-all text-xs tracking-wide uppercase font-mono"
-            title="Save Current Draft"
-          >
-            <Save className="w-4 h-4" />
-            <span>Save Draft</span>
-          </button>
-        </div>
-      )}
+
       
       <AdminModal 
         isOpen={isAdminOpen} 
