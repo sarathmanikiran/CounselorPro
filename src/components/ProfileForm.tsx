@@ -34,8 +34,43 @@ export default function ProfileForm({ exam, profile, onChange, onNext, onBack }:
   }, []);
 
   const handleRankChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = parseInt(e.target.value) || 0;
-    onChange({ ...profile, rank: val });
+    const rawVal = e.target.value;
+    const newErrors = { ...errors };
+    
+    if (rawVal === '') {
+      newErrors.rank = 'Rank cannot be empty. Please enter a valid rank.';
+      setErrors(newErrors);
+      onChange({ ...profile, rank: 0 });
+      return;
+    }
+    
+    // Check for negative or non-numeric characters (decimals, sign characters, scientific notation)
+    if (!/^\d+$/.test(rawVal)) {
+      newErrors.rank = 'Rank must be a numeric value containing digits only. Decimals, sign symbols, or letters are not allowed.';
+      setErrors(newErrors);
+      return;
+    }
+    
+    const parsed = parseInt(rawVal, 10);
+    
+    if (parsed <= 0) {
+      newErrors.rank = 'Rank must be a positive integer greater than 0.';
+      setErrors(newErrors);
+      onChange({ ...profile, rank: parsed });
+      return;
+    }
+    
+    if (parsed > 200000) {
+      newErrors.rank = 'Please enter a rank below 200,000.';
+      setErrors(newErrors);
+      onChange({ ...profile, rank: parsed });
+      return;
+    }
+    
+    // Clear rank error if valid
+    delete newErrors.rank;
+    setErrors(newErrors);
+    onChange({ ...profile, rank: parsed });
   };
 
   const validate = () => {
@@ -43,7 +78,7 @@ export default function ProfileForm({ exam, profile, onChange, onNext, onBack }:
     if (!profile.hallTicket || profile.hallTicket.trim() === '') {
       tempErrors.hallTicket = 'Hall Ticket Number is required.';
     }
-    if (profile.rank <= 0) {
+    if (profile.rank <= 0 || isNaN(profile.rank)) {
       tempErrors.rank = 'Rank must be a positive number greater than 0.';
     } else if (profile.rank > 200000) {
       tempErrors.rank = 'Please enter a rank below 200,000.';
@@ -113,7 +148,7 @@ export default function ProfileForm({ exam, profile, onChange, onNext, onBack }:
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
           {/* Hall Ticket Number */}
           <div className="space-y-1.5">
-            <label className="block text-sm font-semibold text-slate-700">
+            <label className="block text-sm font-bold text-slate-800">
               Hall Ticket / Roll Number
             </label>
             <div className="relative">
@@ -123,7 +158,11 @@ export default function ProfileForm({ exam, profile, onChange, onNext, onBack }:
                 onChange={(e) => onChange({ ...profile, hallTicket: e.target.value.toUpperCase() })}
                 id="hall-ticket-input"
                 placeholder="E.g., AP2301A451"
-                className="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 font-mono text-sm tracking-widest bg-white"
+                className={`w-full px-4 py-2.5 rounded-lg border focus:outline-none focus:ring-2 font-mono text-sm tracking-widest bg-white ${
+                  errors.hallTicket 
+                    ? 'border-red-500 focus:ring-red-500/20 focus:border-red-500 bg-red-50/10' 
+                    : 'border-slate-300 focus:ring-emerald-600/20 focus:border-emerald-600'
+                }`}
               />
               <button
                 type="button"
@@ -135,13 +174,15 @@ export default function ProfileForm({ exam, profile, onChange, onNext, onBack }:
               </button>
             </div>
             {errors.hallTicket && (
-              <p className="text-red-500 text-xs font-mono">{errors.hallTicket}</p>
+              <p className="text-red-600 text-xs font-semibold font-mono flex items-center gap-1">
+                ⚠️ {errors.hallTicket}
+              </p>
             )}
           </div>
 
           {/* Rank */}
           <div className="space-y-1.5">
-            <label className="block text-sm font-semibold text-slate-700">
+            <label className="block text-sm font-bold text-slate-800">
               Exam Rank Obtained
             </label>
             <div className="relative">
@@ -153,14 +194,20 @@ export default function ProfileForm({ exam, profile, onChange, onNext, onBack }:
                 placeholder="E.g., 4250"
                 min="1"
                 max="200000"
-                className="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 font-mono text-sm"
+                className={`w-full px-4 py-2.5 rounded-lg border focus:outline-none focus:ring-2 font-mono text-sm ${
+                  errors.rank 
+                    ? 'border-red-500 focus:ring-red-500/20 focus:border-red-500 bg-red-50/10' 
+                    : 'border-slate-300 focus:ring-emerald-600/20 focus:border-emerald-600'
+                }`}
               />
               <div className="absolute right-4 top-1/2 transform -translate-y-1/2 text-slate-400 pointer-events-none">
                 <Trophy className="w-4 h-4 text-amber-500" />
               </div>
             </div>
             {errors.rank && (
-              <p className="text-red-500 text-xs font-mono">{errors.rank}</p>
+              <p className="text-red-600 text-xs font-semibold font-mono flex items-center gap-1">
+                ⚠️ {errors.rank}
+              </p>
             )}
           </div>
         </div>

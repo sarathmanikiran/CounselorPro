@@ -900,6 +900,8 @@ export function getSeatProbability(college: College, rank: number, category: str
   }
 }
 
+export let COLLEGES_SOURCE = 'Local Static JSON';
+
 // Dynamically retrieve the real college database from the server API
 export async function loadRealColleges(): Promise<number> {
   try {
@@ -910,6 +912,7 @@ export async function loadRealColleges(): Promise<number> {
       // Clean target reference array and push the server dataset
       COLLEGES_DB.length = 0;
       COLLEGES_DB.push(...data.colleges);
+      COLLEGES_SOURCE = data.source || 'Live Database';
       console.log(`Successfully mapped and populated ${data.colleges.length} real colleges from source: ${data.source}`);
       return data.colleges.length;
     }

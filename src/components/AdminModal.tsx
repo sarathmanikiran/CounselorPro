@@ -1,5 +1,7 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Database, UploadCloud, AlertCircle, RefreshCw, X, CheckCircle, Info, Lock, ShieldCheck, Mail, LogOut, Key } from 'lucide-react';
+import { initializeApp, getApps, getApp } from 'firebase/app';
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
 
 interface AdminModalProps {
   isOpen: boolean;
@@ -9,7 +11,6 @@ interface AdminModalProps {
 
 export default function AdminModal({ isOpen, onClose, onUploadSuccess }: AdminModalProps) {
   const [adminEmail, setAdminEmail] = useState<string>(() => localStorage.getItem('admin_email') || '');
-  const [emailInput, setEmailInput] = useState('');
   const [authError, setAuthError] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
 
@@ -20,6 +21,75 @@ export default function AdminModal({ isOpen, onClose, onUploadSuccess }: AdminMo
   const [log, setLog] = useState<string[]>([]);
   const [errorMsg, setErrorMsg] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Firebase integration states
+  const [firebaseConfig, setFirebaseConfig] = useState<any>(null);
+  const [firebaseApp, setFirebaseApp] = useState<any>(null);
+  const [firebaseAuth, setFirebaseAuth] = useState<any>(null);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [idToken, setIdToken] = useState<string>('');
+  const [isLoadingConfig, setIsLoadingConfig] = useState(true);
+
+  // Load configuration and listen to authentication state
+  useEffect(() => {
+    if (!isOpen) return;
+
+    let active = true;
+    const fetchConfig = async () => {
+      try {
+        const response = await fetch('/api/config/firebase');
+        if (!response.ok) throw new Error('Failed to load Firebase config');
+        const config = await response.json();
+        
+        if (active) {
+          setFirebaseConfig(config);
+          setIsLoadingConfig(false);
+
+          if (config.apiKey && config.projectId) {
+            try {
+              const app = getApps().length === 0 ? initializeApp(config) : getApp();
+              const auth = getAuth(app);
+              setFirebaseApp(app);
+              setFirebaseAuth(auth);
+
+              const unsubscribe = onAuthStateChanged(auth, async (user) => {
+                if (user) {
+                  setCurrentUser(user);
+                  try {
+                    const token = await user.getIdToken();
+                    setIdToken(token);
+                    if (user.email) {
+                      setAdminEmail(user.email);
+                      localStorage.setItem('admin_email', user.email);
+                    }
+                  } catch (tokenErr) {
+                    console.error('Failed to get user ID token:', tokenErr);
+                  }
+                } else {
+                  setCurrentUser(null);
+                  setIdToken('');
+                }
+              });
+
+              return () => {
+                unsubscribe();
+              };
+            } catch (initErr) {
+              console.error('Error initializing client Firebase:', initErr);
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load Firebase configuration from server:', err);
+        if (active) setIsLoadingConfig(false);
+      }
+    };
+
+    fetchConfig();
+    return () => {
+      active = false;
+    };
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -90,7 +160,7 @@ export default function AdminModal({ isOpen, onClose, onUploadSuccess }: AdminMo
         setParsedData(json);
         setStatus('ready');
         appendLog(`Successfully parsed dataset: ${json.length.toLocaleString()} entries found.`);
-        appendLog(`Ready to commit to Firebase Firestore (projectId: counselorpro-6975d).`);
+        appendLog(`Ready to commit to Firebase Firestore (projectId: ${firebaseConfig?.projectId || 'counselorpro-6975d'}).`);
       } catch (err: any) {
         setStatus('error');
         setErrorMsg(`Parsing Error: ${err.message}`);
@@ -116,7 +186,7 @@ export default function AdminModal({ isOpen, onClose, onUploadSuccess }: AdminMo
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          'X-Admin-Email': adminEmail
+          'Authorization': `Bearer ${idToken}`
         },
         body: JSON.stringify(parsedData)
       });
@@ -148,27 +218,46 @@ export default function AdminModal({ isOpen, onClose, onUploadSuccess }: AdminMo
     setErrorMsg('');
   };
 
-  const handleVerifyAdmin = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleGoogleSignIn = async () => {
+    if (!firebaseAuth) {
+      setAuthError('Firebase Authentication has not been initialized. Please check configuration.');
+      return;
+    }
     setAuthError('');
     setIsVerifying(true);
-    
-    setTimeout(() => {
-      if (emailInput.trim().toLowerCase() === 'sarathdasireddy369@gmail.com') {
-        localStorage.setItem('admin_email', 'sarathdasireddy369@gmail.com');
-        setAdminEmail('sarathdasireddy369@gmail.com');
-        setEmailInput('');
+    try {
+      const provider = new GoogleAuthProvider();
+      const result = await signInWithPopup(firebaseAuth, provider);
+      const user = result.user;
+      const token = await user.getIdToken();
+      
+      if (user.email === 'sarathdasireddy369@gmail.com') {
+        setIdToken(token);
+        setAdminEmail(user.email);
+        localStorage.setItem('admin_email', user.email);
       } else {
-        setAuthError(`Access Denied: '${emailInput}' is not authorized. This administrator console is secured for sarathdasireddy369@gmail.com only.`);
+        setAuthError(`Access Denied: '${user.email}' is not authorized. This administrator console is secured for sarathdasireddy369@gmail.com only.`);
+        await signOut(firebaseAuth);
       }
+    } catch (err: any) {
+      console.error('Google Auth Sign In error:', err);
+      setAuthError(`Authentication Error: ${err.message}`);
+    } finally {
       setIsVerifying(false);
-    }, 600);
+    }
   };
 
-  const handleSignOutAdmin = () => {
+  const handleSignOutAdmin = async () => {
     localStorage.removeItem('admin_email');
     setAdminEmail('');
     resetPortal();
+    if (firebaseAuth) {
+      try {
+        await signOut(firebaseAuth);
+      } catch (err) {
+        console.error('Failed to sign out from Firebase:', err);
+      }
+    }
   };
 
   return (
@@ -183,7 +272,7 @@ export default function AdminModal({ isOpen, onClose, onUploadSuccess }: AdminMo
             </div>
             <div>
               <h2 className="font-sans font-extrabold text-slate-900 tracking-tight text-base leading-none">Database Administration</h2>
-              <p className="text-[10px] text-slate-500 font-mono mt-1">PROJECT: counselorpro-6975d</p>
+              <p className="text-[10px] text-slate-500 font-mono mt-1">PROJECT: {firebaseConfig?.projectId || 'counselorpro-6975d'}</p>
             </div>
           </div>
           <button 
@@ -210,49 +299,66 @@ export default function AdminModal({ isOpen, onClose, onUploadSuccess }: AdminMo
                 </div>
               </div>
 
-              <form onSubmit={handleVerifyAdmin} className="max-w-md mx-auto space-y-4">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-700 font-sans block">
-                    Administrator Email Address
-                  </label>
-                  <div className="relative">
-                    <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                    <input
-                      type="email"
-                      required
-                      placeholder="Enter admin email ID"
-                      value={emailInput}
-                      onChange={(e) => setEmailInput(e.target.value)}
-                      className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-300 rounded-xl text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 font-medium font-mono"
-                    />
-                  </div>
+              {isLoadingConfig ? (
+                <div className="flex flex-col items-center justify-center py-6 space-y-2">
+                  <RefreshCw className="w-6 h-6 text-emerald-600 animate-spin" />
+                  <span className="text-xs text-slate-500 font-mono">Loading authentication options...</span>
                 </div>
-
-                {authError && (
-                  <div className="p-3.5 bg-red-50 border border-red-100 text-red-800 rounded-xl text-xs flex gap-2.5 items-start font-sans leading-relaxed animate-fade-in">
-                    <AlertCircle className="w-4.5 h-4.5 text-red-600 shrink-0 mt-0.5" />
-                    <span>{authError}</span>
+              ) : (!firebaseConfig?.apiKey || !firebaseConfig?.projectId) ? (
+                <div className="max-w-md mx-auto bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-4">
+                  <div className="flex gap-2.5 items-start">
+                    <AlertCircle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+                    <div className="text-xs text-slate-700 space-y-1">
+                      <strong className="font-semibold text-slate-900">Firebase Configuration Required</strong>
+                      <p className="leading-relaxed text-slate-500">
+                        To secure this panel with Firebase Authentication and enable Firestore sync, please define these environment variables (secrets):
+                      </p>
+                    </div>
                   </div>
-                )}
-
-                <button
-                  type="submit"
-                  disabled={isVerifying}
-                  className="w-full py-2.5 bg-slate-900 hover:bg-slate-850 active:scale-[0.99] text-white font-bold rounded-xl text-xs tracking-wider uppercase font-mono shadow-sm transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-75"
-                >
-                  {isVerifying ? (
-                    <>
-                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                      <span>Verifying Credentials...</span>
-                    </>
-                  ) : (
-                    <>
-                      <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                      <span>Unlock Database Dashboard</span>
-                    </>
+                  <div className="bg-slate-900 text-slate-300 font-mono text-[11px] p-3 rounded-lg space-y-1 select-all">
+                    <div># Firebase Project and Credentials</div>
+                    <div>FIREBASE_PROJECT_ID=...</div>
+                    <div>FIREBASE_PRIVATE_KEY_ID=...</div>
+                    <div>FIREBASE_PRIVATE_KEY=...</div>
+                    <div>FIREBASE_CLIENT_EMAIL=...</div>
+                    <div>FIREBASE_CLIENT_ID=...</div>
+                    <div className="mt-2"># Public Client SDK Configuration</div>
+                    <div>FIREBASE_API_KEY=...</div>
+                    <div>FIREBASE_AUTH_DOMAIN=...</div>
+                    <div>FIREBASE_APP_ID=...</div>
+                  </div>
+                  <p className="text-[10px] text-slate-400 leading-relaxed text-center">
+                    Once these variables are set in your AI Studio/environment secrets, restart the server to authenticate and upload your database safely.
+                  </p>
+                </div>
+              ) : (
+                <div className="max-w-md mx-auto space-y-4">
+                  {authError && (
+                    <div className="p-3.5 bg-red-50 border border-red-100 text-red-800 rounded-xl text-xs flex gap-2.5 items-start font-sans leading-relaxed animate-fade-in">
+                      <AlertCircle className="w-4.5 h-4.5 text-red-600 shrink-0 mt-0.5" />
+                      <span>{authError}</span>
+                    </div>
                   )}
-                </button>
-              </form>
+
+                  <button
+                    onClick={handleGoogleSignIn}
+                    disabled={isVerifying}
+                    className="w-full py-3 px-4 bg-slate-900 hover:bg-slate-850 active:scale-[0.99] text-white font-bold rounded-xl text-xs tracking-wider uppercase font-mono shadow-sm transition-all flex items-center justify-center gap-2.5 cursor-pointer disabled:opacity-75"
+                  >
+                    {isVerifying ? (
+                      <>
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        <span>Verifying Session...</span>
+                      </>
+                    ) : (
+                      <>
+                        <ShieldCheck className="w-4.5 h-4.5 text-emerald-400" />
+                        <span>Sign In with Google</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Footer */}

@@ -1,7 +1,7 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { College, StudentProfile, WebOption } from '../types';
 import { COLLEGES_DB, getSeatProbability, getCollegesForStream } from '../data/colleges';
-import { Search, Filter, Plus, Trash2, ArrowUp, ArrowDown, ListOrdered, GraduationCap, DollarSign, RefreshCw, AlertCircle, CheckCircle2, ArrowLeftRight } from 'lucide-react';
+import { Search, Filter, Plus, Trash2, ArrowUp, ArrowDown, ListOrdered, GraduationCap, DollarSign, RefreshCw, AlertCircle, CheckCircle2, ArrowLeftRight, GripVertical } from 'lucide-react';
 
 interface OptionEntryProps {
   profile: StudentProfile;
@@ -55,6 +55,32 @@ export default function OptionEntry({ profile, selectedOptions, onUpdateOptions,
   
   // Custom priority change state for manual index assignment
   const [manualIndexState, setManualIndexState] = useState<{ [optionId: string]: string }>({});
+  const [priorityErrorState, setPriorityErrorState] = useState<{ [optionId: string]: string }>({});
+
+  // Drag and drop state
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+
+  const handleDragStart = useCallback((e: React.DragEvent, idx: number) => {
+    setDraggedIndex(idx);
+    e.dataTransfer.effectAllowed = 'move';
+  }, []);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent, targetIndex: number) => {
+    e.preventDefault();
+    if (draggedIndex === null || draggedIndex === targetIndex) return;
+
+    const updated = [...selectedOptions];
+    const [movedItem] = updated.splice(draggedIndex, 1);
+    updated.splice(targetIndex, 0, movedItem);
+
+    const reindexed = updated.map((opt, idx) => ({ ...opt, priority: idx + 1 }));
+    onUpdateOptions(reindexed);
+    setDraggedIndex(null);
+  }, [draggedIndex, selectedOptions, onUpdateOptions]);
 
   const [visibleCount, setVisibleCount] = useState(60);
 
@@ -111,9 +137,12 @@ export default function OptionEntry({ profile, selectedOptions, onUpdateOptions,
   }, [profile.exam, collegesList]);
 
   // Add an option to the priority list
-  const addOption = (college: College) => {
+  const addOption = useCallback((college: College) => {
     // Check if college + branch is already selected
-    const isAlreadySelected = selectedOptions.some(opt => opt.collegeId === college.id);
+    const isAlreadySelected = selectedOptions.some(opt => 
+      opt.collegeId === college.id || 
+      (opt.collegeCode.toLowerCase() === college.code.toLowerCase() && opt.branch.toLowerCase() === college.branch.toLowerCase())
+    );
     if (isAlreadySelected) return;
 
     const newOption: WebOption = {
@@ -128,10 +157,10 @@ export default function OptionEntry({ profile, selectedOptions, onUpdateOptions,
     };
 
     onUpdateOptions([...selectedOptions, newOption]);
-  };
+  }, [selectedOptions, onUpdateOptions]);
 
   // Remove an option
-  const removeOption = (id: string) => {
+  const removeOption = useCallback((id: string) => {
     const remaining = selectedOptions.filter(opt => opt.id !== id);
     // Re-index priorities
     const reindexed = remaining.map((opt, index) => ({
@@ -139,10 +168,10 @@ export default function OptionEntry({ profile, selectedOptions, onUpdateOptions,
       priority: index + 1
     }));
     onUpdateOptions(reindexed);
-  };
+  }, [selectedOptions, onUpdateOptions]);
 
   // Move option up in priority
-  const moveUp = (index: number) => {
+  const moveUp = useCallback((index: number) => {
     if (index === 0) return;
     const updated = [...selectedOptions];
     const temp = updated[index];
@@ -152,10 +181,10 @@ export default function OptionEntry({ profile, selectedOptions, onUpdateOptions,
     // re-assign priorities
     const reindexed = updated.map((opt, idx) => ({ ...opt, priority: idx + 1 }));
     onUpdateOptions(reindexed);
-  };
+  }, [selectedOptions, onUpdateOptions]);
 
   // Move option down in priority
-  const moveDown = (index: number) => {
+  const moveDown = useCallback((index: number) => {
     if (index === selectedOptions.length - 1) return;
     const updated = [...selectedOptions];
     const temp = updated[index];
@@ -165,21 +194,41 @@ export default function OptionEntry({ profile, selectedOptions, onUpdateOptions,
     // re-assign priorities
     const reindexed = updated.map((opt, idx) => ({ ...opt, priority: idx + 1 }));
     onUpdateOptions(reindexed);
-  };
+  }, [selectedOptions, onUpdateOptions]);
 
   // Move option to arbitrary target priority index
-  const handleMoveToPriority = (id: string, currentIndex: number) => {
-    const targetPriorityStr = manualIndexState[id];
-    const targetPriority = parseInt(targetPriorityStr);
+  const handleMoveToPriority = useCallback((id: string, currentIndex: number) => {
+    const targetPriorityStr = manualIndexState[id] || '';
     
-    if (isNaN(targetPriority) || targetPriority < 1 || targetPriority > selectedOptions.length) {
-      // Clear incorrect input
-      setManualIndexState(prev => ({ ...prev, [id]: '' }));
+    if (!targetPriorityStr.trim()) {
+      setPriorityErrorState(prev => ({ ...prev, [id]: 'Empty value.' }));
       return;
     }
 
+    if (!/^\d+$/.test(targetPriorityStr)) {
+      setPriorityErrorState(prev => ({ ...prev, [id]: 'Digits only.' }));
+      return;
+    }
+
+    const targetPriority = parseInt(targetPriorityStr, 10);
+    
+    if (isNaN(targetPriority) || targetPriority < 1 || targetPriority > selectedOptions.length) {
+      setPriorityErrorState(prev => ({ ...prev, [id]: `Enter 1-${selectedOptions.length}.` }));
+      return;
+    }
+
+    // Clear error
+    setPriorityErrorState(prev => {
+      const copy = { ...prev };
+      delete copy[id];
+      return copy;
+    });
+
     const targetIndex = targetPriority - 1;
-    if (targetIndex === currentIndex) return;
+    if (targetIndex === currentIndex) {
+      setManualIndexState(prev => ({ ...prev, [id]: '' }));
+      return;
+    }
 
     const updated = [...selectedOptions];
     const [movedItem] = updated.splice(currentIndex, 1);
@@ -191,17 +240,17 @@ export default function OptionEntry({ profile, selectedOptions, onUpdateOptions,
     
     // Clear manual index input
     setManualIndexState(prev => ({ ...prev, [id]: '' }));
-  };
+  }, [selectedOptions, manualIndexState, onUpdateOptions]);
 
-  const clearAllOptions = () => {
+  const clearAllOptions = useCallback(() => {
     if (window.confirm("Are you sure you want to clear your current choice list? This cannot be undone.")) {
       onUpdateOptions([]);
     }
-  };
+  }, [onUpdateOptions]);
 
   // Calculate sum of fees, count of branches
-  const totalEstimatedFees = selectedOptions.reduce((sum, opt) => sum + opt.fee, 0);
-  const cseCount = selectedOptions.filter(opt => opt.branch.includes('CSE')).length;
+  const totalEstimatedFees = useMemo(() => selectedOptions.reduce((sum, opt) => sum + opt.fee, 0), [selectedOptions]);
+  const cseCount = useMemo(() => selectedOptions.filter(opt => opt.branch.includes('CSE')).length, [selectedOptions]);
 
   return (
     <div className="max-w-7xl mx-auto py-6 px-4" id="options-entry-workspace">
@@ -342,7 +391,10 @@ export default function OptionEntry({ profile, selectedOptions, onUpdateOptions,
             ) : (
               <>
                 {filteredColleges.slice(0, visibleCount).map(col => {
-                  const isSelected = selectedOptions.some(opt => opt.collegeId === col.id);
+                  const isSelected = selectedOptions.some(opt => 
+                    opt.collegeId === col.id || 
+                    (opt.collegeCode.toLowerCase() === col.code.toLowerCase() && opt.branch.toLowerCase() === col.branch.toLowerCase())
+                  );
                   const prob = getSeatProbability(col, profile.rank, profile.category);
                   
                   const probLabel = {
@@ -454,77 +506,114 @@ export default function OptionEntry({ profile, selectedOptions, onUpdateOptions,
                 </div>
               ) : (
                 selectedOptions.map((opt, index) => {
+                  const isBeingDragged = index === draggedIndex;
                   return (
                     <div 
                       key={opt.id}
-                      className="p-3 bg-white border border-slate-200 rounded-lg shadow-2xs hover:border-emerald-300 transition-all flex items-center justify-between gap-3 relative overflow-hidden"
+                      draggable="true"
+                      onDragStart={(e) => handleDragStart(e, index)}
+                      onDragOver={handleDragOver}
+                      onDrop={(e) => handleDrop(e, index)}
+                      onDragEnd={() => setDraggedIndex(null)}
+                      className={`p-2.5 sm:p-3 bg-white border rounded-xl shadow-2xs hover:border-emerald-300 transition-all flex items-center justify-between gap-2.5 relative ${
+                        isBeingDragged ? 'opacity-40 border-dashed border-emerald-500 bg-slate-50' : 'border-slate-200'
+                      }`}
                     >
-                      {/* Priority Tag index */}
-                      <div className="flex-shrink-0 bg-emerald-600 text-white font-mono font-black text-xs h-8 w-8 rounded-lg flex items-center justify-center shadow-xs">
-                        {opt.priority}
+                      {/* Drag Handle & Priority Number */}
+                      <div className="flex items-center gap-1.5 shrink-0 select-none">
+                        <div 
+                          className="p-1 text-slate-300 hover:text-slate-500 cursor-grab active:cursor-grabbing hidden sm:flex items-center justify-center h-10 w-6"
+                          title="Drag to reorder"
+                        >
+                          <GripVertical className="w-4 h-4 shrink-0" />
+                        </div>
+                        <div className="bg-emerald-600 text-white font-mono font-black text-xs h-8 w-8 rounded-lg flex items-center justify-center shadow-xs">
+                          {opt.priority}
+                        </div>
                       </div>
 
                       {/* College Branch Title details */}
-                      <div className="flex-grow space-y-0.5">
-                        <div className="flex items-center gap-2 flex-wrap">
+                      <div className="flex-grow space-y-0.5 min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
                           <span className="font-sans font-extrabold text-xs text-slate-900">{opt.collegeCode}</span>
-                          <span className="font-mono text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.2 border border-emerald-100 rounded">
+                          <span className="font-mono text-[9px] sm:text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.2 border border-emerald-100 rounded">
                             {opt.branch}
                           </span>
-                          <span className="text-[10px] text-slate-400 font-mono">{opt.district}</span>
+                          <span className="text-[9px] sm:text-[10px] text-slate-400 font-mono truncate max-w-[80px]">{opt.district}</span>
                         </div>
-                        <h4 className="text-xs text-slate-500 font-medium line-clamp-1">{opt.collegeName}</h4>
+                        <h4 className="text-[11px] sm:text-xs text-slate-500 font-medium line-clamp-1">{opt.collegeName}</h4>
                       </div>
 
                       {/* Manual index target input & re-ordering buttons */}
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1.5 shrink-0">
                         
-                        {/* Priority shift field */}
-                        <div className="flex items-center gap-1">
-                          <input
-                            type="number"
-                            placeholder="Set"
-                            value={manualIndexState[opt.id] || ''}
-                            onChange={(e) => setManualIndexState({ ...manualIndexState, [opt.id]: e.target.value })}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
-                                handleMoveToPriority(opt.id, index);
-                              }
-                            }}
-                            className="w-10 text-center text-xs border border-slate-300 rounded p-1 font-mono focus:outline-none focus:ring-1 focus:ring-emerald-600"
-                            title="Enter new position and hit Enter or click Go"
-                          />
-                          <button
-                            onClick={() => handleMoveToPriority(opt.id, index)}
-                            className="bg-slate-100 hover:bg-slate-200 text-slate-600 text-[10px] font-bold px-1.5 py-1 rounded transition-all cursor-pointer"
-                          >
-                            Go
-                          </button>
+                        {/* Priority shift field (compact on mobile) */}
+                        <div className="hidden sm:flex flex-col items-end gap-1">
+                          <div className="flex items-center gap-1">
+                            <input
+                              type="number"
+                              placeholder="Set"
+                              value={manualIndexState[opt.id] || ''}
+                              onChange={(e) => {
+                                setManualIndexState({ ...manualIndexState, [opt.id]: e.target.value });
+                                if (priorityErrorState[opt.id]) {
+                                  setPriorityErrorState(prev => {
+                                    const copy = { ...prev };
+                                    delete copy[opt.id];
+                                    return copy;
+                                  });
+                                }
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  handleMoveToPriority(opt.id, index);
+                                }
+                              }}
+                              className="w-10 text-center text-xs border border-slate-300 rounded p-1 font-mono focus:outline-none focus:ring-1 focus:ring-emerald-600"
+                              title="Enter new position and hit Enter or click Go"
+                            />
+                            <button
+                              onClick={() => handleMoveToPriority(opt.id, index)}
+                              className="bg-slate-100 hover:bg-slate-200 text-slate-600 text-[10px] font-bold px-1.5 py-1 rounded transition-all cursor-pointer"
+                            >
+                              Go
+                            </button>
+                          </div>
+                          {priorityErrorState[opt.id] && (
+                            <span className="text-[9px] text-red-500 font-medium whitespace-nowrap">
+                              {priorityErrorState[opt.id]}
+                            </span>
+                          )}
                         </div>
 
-                        {/* Arrows */}
-                        <div className="flex flex-col gap-0.5">
+                        {/* Arrows with Large Mobile Touch Targets (at least 40px/44px for high accuracy) */}
+                        <div className="flex items-center gap-1">
                           <button
                             disabled={index === 0}
                             onClick={() => moveUp(index)}
-                            className="p-1 text-slate-400 hover:text-emerald-600 hover:bg-slate-100 rounded disabled:opacity-30 cursor-pointer"
+                            className="w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center border border-slate-200 bg-slate-50 hover:bg-emerald-50 text-slate-500 hover:text-emerald-700 rounded-lg disabled:opacity-20 transition-all cursor-pointer active:scale-95"
+                            title="Move Option Up"
+                            aria-label="Move Up"
                           >
-                            <ArrowUp className="w-3 h-3" />
+                            <ArrowUp className="w-4 h-4" />
                           </button>
                           <button
                             disabled={index === selectedOptions.length - 1}
                             onClick={() => moveDown(index)}
-                            className="p-1 text-slate-400 hover:text-emerald-600 hover:bg-slate-100 rounded disabled:opacity-30 cursor-pointer"
+                            className="w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center border border-slate-200 bg-slate-50 hover:bg-emerald-50 text-slate-500 hover:text-emerald-700 rounded-lg disabled:opacity-20 transition-all cursor-pointer active:scale-95"
+                            title="Move Option Down"
+                            aria-label="Move Down"
                           >
-                            <ArrowDown className="w-3 h-3" />
+                            <ArrowDown className="w-4 h-4" />
                           </button>
                         </div>
 
-                        {/* Delete trash button */}
+                        {/* Delete trash button with safe touch padding */}
                         <button
                           onClick={() => removeOption(opt.id)}
-                          className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all cursor-pointer"
+                          className="w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center text-slate-400 hover:text-red-600 hover:bg-red-50 border border-transparent hover:border-red-100 rounded-lg transition-all cursor-pointer"
                           title="Remove Choice"
+                          aria-label="Delete option"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>

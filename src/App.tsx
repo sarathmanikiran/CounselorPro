@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import LandingPage from './components/LandingPage';
 import ExamSelector from './components/ExamSelector';
@@ -6,11 +6,13 @@ import ProfileForm from './components/ProfileForm';
 import OptionEntry from './components/OptionEntry';
 import ChoiceRefinement from './components/ChoiceRefinement';
 import FinalReview from './components/FinalReview';
-import SuccessScreen from './components/SuccessScreen';
-import AdminModal from './components/AdminModal';
+
+const SuccessScreen = React.lazy(() => import('./components/SuccessScreen'));
+const AdminModal = React.lazy(() => import('./components/AdminModal'));
+
 import { StudentProfile, WebOption, ExamType } from './types';
 import { Compass, Sparkles, CheckCircle, GraduationCap, Database, Save } from 'lucide-react';
-import { loadRealColleges } from './data/colleges';
+import { loadRealColleges, COLLEGES_SOURCE } from './data/colleges';
 
 type StepType = 'LANDING' | 'SELECT_EXAM' | 'ENTER_DETAILS' | 'ENTRY_WORKFLOW' | 'REFINEMENT' | 'FINAL_REVIEW' | 'SUCCESS';
 
@@ -24,6 +26,8 @@ export default function App() {
     count: 0,
     source: 'Initializing...'
   });
+
+  const [loadingColleges, setLoadingColleges] = useState(true);
 
   // 1. Wizard & Data Persistence state loaded from localStorage
   const [step, setStep] = useState<StepType>(() => {
@@ -74,18 +78,19 @@ export default function App() {
 
   // Fetch the real colleges database from the dynamic API/Firestore on boot
   useEffect(() => {
+    setLoadingColleges(true);
     loadRealColleges().then(count => {
       if (count > 0) {
         setDbStatus({
           loaded: true,
           count,
-          source: 'Live Database'
+          source: COLLEGES_SOURCE
         });
       } else {
         setDbStatus({
           loaded: false,
           count: 0,
-          source: 'Simulator Fallback'
+          source: COLLEGES_SOURCE || 'Simulator Fallback'
         });
       }
     }).catch(err => {
@@ -95,6 +100,8 @@ export default function App() {
         count: 0,
         source: 'Error loading database'
       });
+    }).finally(() => {
+      setLoadingColleges(false);
     });
   }, []);
 
@@ -114,12 +121,12 @@ export default function App() {
   // Save Draft state and handler
   const [showSaveToast, setShowSaveToast] = useState(false);
 
-  const handleSaveDraft = () => {
+  const handleSaveDraft = useCallback(() => {
     localStorage.setItem('counselor_step', step);
     localStorage.setItem('counselor_profile', JSON.stringify(profile));
     localStorage.setItem('counselor_selectedOptions', JSON.stringify(selectedOptions));
     setShowSaveToast(true);
-  };
+  }, [step, profile, selectedOptions]);
 
   useEffect(() => {
     if (showSaveToast) {
@@ -191,7 +198,7 @@ export default function App() {
   const totalSteps = 4;
   const currentStepNum = getStepNumber(step);
 
-  const resetSimulation = () => {
+  const resetSimulation = useCallback(() => {
     localStorage.removeItem('counselor_step');
     localStorage.removeItem('counselor_profile');
     localStorage.removeItem('counselor_selectedOptions');
@@ -206,17 +213,52 @@ export default function App() {
     });
     setSelectedOptions([]);
     setStep('LANDING');
-  };
+  }, []);
 
   // Safe callback updates
-  const handleSelectExam = (exam: ExamType) => {
+  const handleSelectExam = useCallback((exam: ExamType) => {
     setProfile(prev => ({
       ...prev,
       exam,
       // Default local region to OU if Telangana, or AU if Andhra Pradesh
       region: exam === 'TS_EAMCET' ? 'OU' : 'AU'
     }));
-  };
+  }, []);
+
+  if (loadingColleges) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6 font-sans" id="boot-loader">
+        <div className="max-w-md w-full bg-white rounded-2xl border border-slate-200 shadow-md p-8 text-center space-y-6">
+          {/* Logo / Icon with Pulse Ring */}
+          <div className="relative w-16 h-16 mx-auto bg-emerald-50 rounded-2xl flex items-center justify-center border border-emerald-100 shadow-xs">
+            <div className="absolute inset-0 rounded-2xl bg-emerald-400/20 animate-ping opacity-75"></div>
+            <Compass className="w-8 h-8 text-emerald-600 animate-spin" style={{ animationDuration: '3s' }} />
+          </div>
+
+          <div className="space-y-2">
+            <h1 className="font-sans font-black text-slate-900 text-xl tracking-tight">CounselorPro</h1>
+            <p className="text-xs font-semibold text-emerald-600 font-mono tracking-wider uppercase">AP & TS Web Option Simulator</p>
+          </div>
+
+          {/* Skeletons */}
+          <div className="space-y-3 pt-2">
+            <div className="h-4 bg-slate-100 rounded-lg w-3/4 mx-auto animate-pulse"></div>
+            <div className="h-3 bg-slate-100 rounded-lg w-5/6 mx-auto animate-pulse"></div>
+            <div className="h-3 bg-slate-100 rounded-lg w-1/2 mx-auto animate-pulse"></div>
+          </div>
+
+          {/* Loading status progress bar */}
+          <div className="relative w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+            <div className="absolute top-0 bottom-0 left-0 bg-emerald-600 rounded-full h-full animate-pulse" style={{ width: '85%' }}></div>
+          </div>
+
+          <div className="text-[10px] text-slate-400 font-mono flex items-center justify-center gap-1">
+            <span>Retrieving live university cutoffs from database...</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans" id="app-root">
@@ -348,12 +390,14 @@ export default function App() {
             )}
 
             {step === 'SUCCESS' && (
-              <SuccessScreen
-                profile={profile}
-                selectedOptions={selectedOptions}
-                optionsLength={selectedOptions.length}
-                onReset={resetSimulation}
-              />
+              <React.Suspense fallback={<div className="flex-grow flex items-center justify-center p-8 text-slate-500 font-semibold font-mono">Loading success details...</div>}>
+                <SuccessScreen
+                  profile={profile}
+                  selectedOptions={selectedOptions}
+                  optionsLength={selectedOptions.length}
+                  onReset={resetSimulation}
+                />
+              </React.Suspense>
             )}
           </motion.div>
         </AnimatePresence>
@@ -381,21 +425,34 @@ export default function App() {
 
 
       
-      <AdminModal 
-        isOpen={isAdminOpen} 
-        onClose={() => setIsAdminOpen(false)} 
-        onUploadSuccess={() => {
-          loadRealColleges().then(count => {
-            if (count > 0) {
-              setDbStatus({
-                loaded: true,
-                count,
-                source: 'Live Database'
-              });
-            }
-          });
-        }}
-      />
+      <React.Suspense fallback={null}>
+        <AdminModal 
+          isOpen={isAdminOpen} 
+          onClose={() => setIsAdminOpen(false)} 
+          onUploadSuccess={() => {
+            loadRealColleges().then(count => {
+              if (count > 0) {
+                setDbStatus({
+                  loaded: true,
+                  count,
+                  source: COLLEGES_SOURCE
+                });
+              }
+            });
+          }}
+        />
+      </React.Suspense>
+
+      {/* 5. UI DB Source Indicator (dev builds only) */}
+      {(import.meta as any).env?.DEV && (
+        <div className="bg-slate-100 border-t border-slate-200 text-[10px] font-mono text-slate-500 py-1.5 px-4 flex items-center justify-between mt-auto shrink-0 select-none">
+          <span className="flex items-center gap-1">
+            <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            ⚙️ DEBUG MODE — DB Status: <strong className="text-emerald-700 font-bold">{dbStatus.loaded ? "ONLINE" : "FALLBACK"}</strong>
+          </span>
+          <span>Data Source: <strong className="text-emerald-700 font-bold">{dbStatus.source}</strong> ({dbStatus.count} colleges loaded)</span>
+        </div>
+      )}
     </div>
   );
 }

@@ -3,25 +3,27 @@ import { getFirestore } from 'firebase-admin/firestore';
 import fs from 'fs';
 import path from 'path';
 
-// Define the target projectId
-const projectId = 'counselorpro-6975d';
+// Define the fallback target projectId
+const fallbackProjectId = 'counselorpro-6975d';
 
 // 1. Initialize firebase-admin SDK
 const serviceAccountPath = path.resolve('serviceAccountKey.json');
 let app;
 if (fs.existsSync(serviceAccountPath)) {
   const serviceAccount = JSON.parse(fs.readFileSync(serviceAccountPath, 'utf8'));
+  const projId = serviceAccount.project_id || process.env.FIREBASE_PROJECT_ID || fallbackProjectId;
   app = initializeApp({
     credential: cert(serviceAccount),
-    projectId: projectId
+    projectId: projId
   });
-  console.log('Firebase Admin initialized with serviceAccountKey.json');
+  console.log(`Firebase Admin initialized with serviceAccountKey.json for project: ${projId}`);
 } else {
+  const projId = process.env.FIREBASE_PROJECT_ID || fallbackProjectId;
   // Fall back to default credentials / project ID
   app = initializeApp({
-    projectId: projectId
+    projectId: projId
   });
-  console.log(`Firebase Admin initialized with projectId: ${projectId} (Application Default Credentials)`);
+  console.log(`Firebase Admin initialized with projectId: ${projId} (Application Default Credentials)`);
 }
 
 const db = getFirestore(app);

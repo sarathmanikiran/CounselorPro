@@ -371,11 +371,11 @@ DISCLAIMER: This is an AI-powered simulation matched against historical cutoff t
                   {/* AI Prediction meter */}
                   <div className="mt-5 pt-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
                     <div className="flex flex-wrap items-center gap-2">
-                      <TrendingUp className="w-4 h-4 text-emerald-600" />
-                      <span className="text-slate-500">
+                      <TrendingUp className="w-4 h-4 text-emerald-700" />
+                      <span className="text-slate-600 font-medium">
                         AI Allotment Probability for Rank {profile.rank.toLocaleString()}:
                       </span>
-                      <span className="font-bold font-mono text-emerald-600 bg-emerald-50 border border-emerald-100 px-2 py-0.5 rounded">
+                      <span className="font-bold font-mono text-emerald-800 bg-emerald-50 border border-emerald-150 px-2 py-0.5 rounded">
                         {getSeatProbability(allotment.college, profile.rank, profile.category)} PROBABILITY
                       </span>
                     </div>
@@ -437,13 +437,13 @@ DISCLAIMER: This is an AI-powered simulation matched against historical cutoff t
                             className="bg-slate-50 hover:bg-slate-100 transition-all border border-slate-200 p-4 rounded-xl flex flex-col justify-between space-y-3"
                           >
                             <div className="space-y-1">
-                              <span className="text-[10px] font-mono font-bold text-emerald-600 bg-emerald-50 border border-emerald-100 px-2 py-0.5 rounded">
+                              <span className="text-[10px] font-mono font-bold text-emerald-800 bg-emerald-50 border border-emerald-150 px-2 py-0.5 rounded">
                                 {college.code}
                               </span>
                               <h6 className="font-sans font-bold text-slate-900 text-xs leading-snug line-clamp-2">
                                 {college.name}
                               </h6>
-                              <p className="text-[10px] text-slate-400 font-mono flex items-center gap-1">
+                              <p className="text-[10px] text-slate-500 font-mono flex items-center gap-1">
                                 <MapPin className="w-3 h-3 flex-shrink-0" />
                                 {college.district} ({college.region})
                               </p>
@@ -451,11 +451,11 @@ DISCLAIMER: This is an AI-powered simulation matched against historical cutoff t
 
                             <div className="pt-2 border-t border-slate-200/60 flex items-center justify-between text-[10px]">
                               <div>
-                                <span className="text-slate-400 block font-mono uppercase">Branch</span>
+                                <span className="text-slate-500 block font-mono uppercase">Branch</span>
                                 <span className="font-bold text-slate-800 font-mono">{college.branch}</span>
                               </div>
                               <span className={`font-mono font-bold px-2 py-0.5 rounded ${
-                                isHigh ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-amber-50 text-amber-700 border border-amber-100'
+                                isHigh ? 'bg-emerald-50 text-emerald-800 border border-emerald-100' : 'bg-amber-50 text-amber-800 border border-amber-100'
                               }`}>
                                 {probability} SAFE
                               </span>

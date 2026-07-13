@@ -7,40 +7,63 @@ import { GoogleGenAI } from "@google/genai";
 import { createServer as createViteServer } from "vite";
 import { initializeApp, cert, getApps, getApp } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
+import { getAuth } from "firebase-admin/auth";
+import compression from "compression";
 
 dotenv.config();
 
 const app = express();
 const PORT = 3000;
 
+app.use(compression());
 app.use(express.json({ limit: "15mb" }));
 app.use(express.urlencoded({ limit: "15mb", extended: true }));
 
-// Define the service account globally
-const serviceAccount = {
-  type: "service_account",
-  project_id: "counselorpro-6975d",
-  private_key_id: "0423dac5d9d290ce68b8e5f608f26db1ea521bc7",
-  private_key: "-----BEGIN PRIVATE KEY-----\nMIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQDBZa0o6iBHds0C\nXIDBO6x73iEJU+QyHrPVNZetCXVwaSloQrn8md9MGVYLat5hjm5a1zHFf2LpcGG5\nm/3y2XIZqeYsSxYv2PqYZ9U2hU0VJMM/h1WY6jy5aJ2ToRrpF2XLOf/gwxFEWrmi\nAoU1DFII0UdC+yYiQ8jUyE7zToIBdEvgKUTtuRBGa6T3cvmaWnXIXuu8LZsuNWrI\n43CxOSRUV1Kmod1GVSMSctGgIQ9Qz/xFHM6bjfqU4z4NCV3M5lgxiA5yh+E1J+Xm\n3rdXby89JLiAFrrP7tdrN+jo8AyOXtlaLymwhieNQrd4VPCDNmttXxtMvNUCwYq5\nQdqM79rrAgMBAAECggEAASNZtIREMlzMR2JHTlvNNQwRQl51rlHTRG2Z+eZfWYz/\niwyGzv9neql/gcuxiVNu6iaatWB9iDAlcxPW7RHt2PbQqEa816/oMZ4Szsz+r3bV\nlfnJktUgtwVFlXPSQQ2RMh6iQdlZWv9Jrl64wp99msMDL1gOWQ9FuZ2AJsW51XZY\nx8wMvsx6Emx/8D1L7RWwiCweNvK6duah2pnYpiVs77ckrj2zd61C8fa4wjU65yWP\n8n5SlkzvNMs8eVQx3x+Qvx5bLsoO/5a1UKfH5rJGikF5R3cvasZiqZDePjqQ2eqe\njPCiV/Xx4i9iG5lwYJlQYMC3R2x7NNh7pAhwlKapCQKBgQDvJH4702oL/Qyc5bkv\nTQdK95dL56hzuQ0UKzUopqJq7QRzialJHShhR8sOC/cTj0Xo3vGSw2mkeyYEo8Ad\nhNkjNJc3Ncoho49UzbprHVz3VPtlpw2jTbwgnpy8Sy3xIR/nZ9KULSb+k+hueaGY\nJ6KLcaP2IWwM9UUEhylbhRvp7wKBgQDPB6xyFNnVcezXV+5XNso9RZ390pEMtbOs\nwNbT4kUGFoKfWx0PJyRg814L+mT8nLjrwZeZPudfy4+wEzbA2D7bJOvF4d0WUPYA\n0Lm4/f3tNdCvYCO4nRoVwL+WiU7GzknrYVABULuHln4oCdfeatQOZ2xa19Zypl0A\n3/Q+lUaKxQKBgD77MXO4HjnCD0xTBA59DuqjgmkvPaIcnmEtb/agzC209nMnUjo7\nP6M/MS8l35B7L0JBVQX+CRiUhlK6faJIlpc7Bog31mA9n0YKWIpVVWKeMwd2k5Tq\nqB0/KLA+bH8Q5kIficoUiiyJ77EIv5I+/gQTjccIzlgrUF386tt7lvppAoGAbpiI\n1MCyxcWAYmGE325Th3vjNK8B8ao3e7fgi3w6p0/rI7oGwguE8Y3Q1dFDlXcbikX2\n+FSUQaZ68fKxsz9SBLuqgCFye/NwF2tpa5uzxL6U5rsTGhJC1xAKyR48yRN2hZmM\npcc9BuesKTNo8FZdRfyV88mNs92PnWIGFlCkSIkCgYA7Qp9JyAOEno1larzz9wUe\n5SkVJewohmy9h5Vz929PdFbcZJ0dBx1W1PCeq/UUyrRvVEpLA+wQy0OVcjOXLRmJ\n3GvYkH9WYzlSLdKmTzeMzOztA+5KvvssFzM/jY8t/2w1LV3X+MvtwigVxEaU1fYL\nvO3SUYEm2LVtdtP6EZwv+Q==\n-----END PRIVATE KEY-----\n",
-  client_email: "firebase-adminsdk-fbsvc@counselorpro-6975d.iam.gserviceaccount.com",
-  client_id: "101900922139634466653",
-  auth_uri: "https://accounts.google.com/o/oauth2/auth",
-  token_uri: "https://oauth2.googleapis.com/token",
-  auth_provider_x509_cert_url: "https://www.googleapis.com/oauth2/v1/certs",
-  client_x509_cert_url: "https://www.googleapis.com/robot/v1/metadata/x509/firebase-adminsdk-fbsvc%40counselorpro-6975d.iam.gserviceaccount.com",
-  universe_domain: "googleapis.com"
-};
+// Helper to construct the Firebase service account from environment variables without logging them
+function getServiceAccount() {
+  const projectId = process.env.FIREBASE_PROJECT_ID;
+  const privateKeyId = process.env.FIREBASE_PRIVATE_KEY_ID;
+  const privateKey = process.env.FIREBASE_PRIVATE_KEY;
+  const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
+  const clientId = process.env.FIREBASE_CLIENT_ID;
+
+  if (!projectId || !privateKey || !clientEmail) {
+    return null;
+  }
+
+  // Format private key properly if it contains escaped newlines
+  const formattedPrivateKey = privateKey.replace(/\\n/g, '\n');
+
+  return {
+    type: "service_account",
+    project_id: projectId,
+    private_key_id: privateKeyId || "",
+    private_key: formattedPrivateKey,
+    client_email: clientEmail,
+    client_id: clientId || "",
+    auth_uri: "https://accounts.google.com/o/oauth2/auth",
+    token_uri: "https://oauth2.googleapis.com/token",
+    auth_provider_x509_cert_url: "https://www.googleapis.com/oauth2/v1/certs",
+    client_x509_cert_url: `https://www.googleapis.com/robot/v1/metadata/x509/${encodeURIComponent(clientEmail)}`,
+    universe_domain: "googleapis.com"
+  };
+}
 
 // Initialize Firebase Admin globally
 let firestoreDb: any = null;
 try {
-  const adminApp = getApps().length === 0 
-    ? initializeApp({ credential: cert(serviceAccount as any), projectId: "counselorpro-6975d" })
-    : getApp();
-  firestoreDb = getFirestore(adminApp);
-  console.log("Firebase Admin successfully initialized on the backend.");
+  const serviceAccount = getServiceAccount();
+  if (serviceAccount) {
+    const adminApp = getApps().length === 0 
+      ? initializeApp({ credential: cert(serviceAccount as any), projectId: serviceAccount.project_id })
+      : getApp();
+    firestoreDb = getFirestore(adminApp);
+    console.log("Firebase Admin successfully initialized on the backend.");
+  } else {
+    console.log("Firebase credentials not fully set up in environment. Firestore features will fall back gracefully.");
+  }
 } catch (err) {
-  console.error("Failed to initialize Firebase Admin globally on server:", err);
+  console.log("Failed to initialize Firebase Admin globally on server:", err);
 }
 
 // District mapping function for colleges
@@ -67,11 +90,27 @@ function mapDistrictAbbr(dist: string): string {
 function mapRawToCollege(item: any, index: number, examType: string): any {
   const isGovt = item.type === 'GOVT' || String(item.type).toUpperCase() === 'GOVT';
   const typeMapped = isGovt ? 'Govt' : 'Private-Autonomous';
+  const code = item.inst_code || item.code || 'UNKN';
+  const branch = item.branch_code || item.branch || 'CSE';
   
   // Extract proper cutoffs
-  const cutoffOC = Number(item.oc_boys || item.oc_girls || item.cutoffOC || 15000);
-  const cutoffBC = Number(item.bcb_boys || item.bca_boys || item.bcd_boys || item.cutoffBC || 25000);
-  const cutoffSCST = Number(item.sc_boys || item.sc_girls || item.st_boys || item.cutoffSCST || 55000);
+  const rawCutoffOC = item.oc_boys || item.oc_girls || item.cutoffOC;
+  if (!rawCutoffOC) {
+    console.warn(`[DATA WARNING] College ${code} (${branch}) is missing OC cutoff data. Falling back to default: 15000`);
+  }
+  const cutoffOC = Number(rawCutoffOC || 15000);
+
+  const rawCutoffBC = item.bcb_boys || item.bca_boys || item.bcd_boys || item.cutoffBC;
+  if (!rawCutoffBC) {
+    console.warn(`[DATA WARNING] College ${code} (${branch}) is missing BC cutoff data. Falling back to default: 25000`);
+  }
+  const cutoffBC = Number(rawCutoffBC || 25000);
+
+  const rawCutoffSCST = item.sc_boys || item.sc_girls || item.st_boys || item.cutoffSCST;
+  if (!rawCutoffSCST) {
+    console.warn(`[DATA WARNING] College ${code} (${branch}) is missing SC/ST cutoff data. Falling back to default: 55000`);
+  }
+  const cutoffSCST = Number(rawCutoffSCST || 55000);
 
   return {
     id: `${examType.toLowerCase()}-${(item.inst_code || item.code || 'col').toLowerCase()}-${(item.branch_code || item.branch || 'cse').toLowerCase()}-${index}`,
@@ -275,13 +314,24 @@ app.get("/api/colleges", async (req, res) => {
 
 // Initialize GoogleGenAI SDK on the server side
 const apiKey = process.env.GEMINI_API_KEY;
+if (!apiKey) {
+  if (process.env.NODE_ENV === "production") {
+    console.error("==========================================================================");
+    console.error("⚠️  CRITICAL PRODUCTION WARNING: GEMINI_API_KEY environment variable is MISSING!");
+    console.error("   AI Counselor features WILL NOT function in production without a valid API key.");
+    console.error("   Please configure GEMINI_API_KEY in your deployment environment secrets.");
+    console.error("==========================================================================");
+  } else {
+    console.warn("==========================================================================");
+    console.warn("⚠️  DEVELOPMENT WARNING: GEMINI_API_KEY environment variable is not defined.");
+    console.warn("   AI counselor features will run in local simulation fallback mode.");
+    console.warn("==========================================================================");
+  }
+}
 let aiClient: GoogleGenAI | null = null;
 
 function getAIClient(): GoogleGenAI {
   if (!aiClient) {
-    if (!apiKey) {
-      console.warn("GEMINI_API_KEY environment variable is not defined. AI counselor features will run in simulation fallback mode.");
-    }
     aiClient = new GoogleGenAI({
       apiKey: apiKey || "MOCK_KEY_FALLBACK",
       httpOptions: {
@@ -333,6 +383,11 @@ app.post("/api/ai/analyze-choices", async (req, res) => {
 
   try {
     if (!apiKey) {
+      if (process.env.NODE_ENV === "production") {
+        console.error("Blocked AI analysis request in production because GEMINI_API_KEY is not defined.");
+        return res.status(500).json({ error: "AI analysis is temporarily unavailable. GEMINI_API_KEY environment variable is missing on this production server." });
+      }
+
       if (customPrompt) {
         // Return a dynamic simulated response for questions
         const mockChatReply = `### AI Counselor Assistant (Simulator Mode)
@@ -386,72 +441,87 @@ Your sequence is generally **well-designed**. You have correctly followed the go
   }
 });
 
+// API: Expose public non-sensitive Firebase config for client-side SDK initialization
+app.get("/api/config/firebase", (req, res) => {
+  res.json({
+    apiKey: process.env.FIREBASE_API_KEY || process.env.VITE_FIREBASE_API_KEY || "",
+    authDomain: process.env.FIREBASE_AUTH_DOMAIN || process.env.VITE_FIREBASE_AUTH_DOMAIN || (process.env.FIREBASE_PROJECT_ID ? `${process.env.FIREBASE_PROJECT_ID}.firebaseapp.com` : ""),
+    projectId: process.env.FIREBASE_PROJECT_ID || "",
+    appId: process.env.FIREBASE_APP_ID || process.env.VITE_FIREBASE_APP_ID || ""
+  });
+});
+
 // 1.5. API: Handle database administrative uploads from the client
 app.post("/api/admin/upload-colleges", async (req, res) => {
-  const adminEmail = req.headers["x-admin-email"];
-  if (adminEmail !== "sarathdasireddy369@gmail.com") {
-    return res.status(403).json({ error: "Access Denied: Only authorized administrators (sarathdasireddy369@gmail.com) can modify the database." });
-  }
-
-  const data = req.body;
-  if (!Array.isArray(data)) {
-    return res.status(400).json({ error: "Invalid data format. Expected a JSON array of college-branch entries." });
-  }
-
-  // Define the service account payload provided by the user
-  const serviceAccount = {
-    type: "service_account",
-    project_id: "counselorpro-6975d",
-    private_key_id: "0423dac5d9d290ce68b8e5f608f26db1ea521bc7",
-    private_key: "-----BEGIN PRIVATE KEY-----\nMIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQDBZa0o6iBHds0C\nXIDBO6x73iEJU+QyHrPVNZetCXVwaSloQrn8md9MGVYLat5hjm5a1zHFf2LpcGG5\nm/3y2XIZqeYsSxYv2PqYZ9U2hU0VJMM/h1WY6jy5aJ2ToRrpF2XLOf/gwxFEWrmi\nAoU1DFII0UdC+yYiQ8jUyE7zToIBdEvgKUTtuRBGa6T3cvmaWnXIXuu8LZsuNWrI\n43CxOSRUV1Kmod1GVSMSctGgIQ9Qz/xFHM6bjfqU4z4NCV3M5lgxiA5yh+E1J+Xm\n3rdXby89JLiAFrrP7tdrN+jo8AyOXtlaLymwhieNQrd4VPCDNmttXxtMvNUCwYq5\nQdqM79rrAgMBAAECggEAASNZtIREMlzMR2JHTlvNNQwRQl51rlHTRG2Z+eZfWYz/\niwyGzv9neql/gcuxiVNu6iaatWB9iDAlcxPW7RHt2PbQqEa816/oMZ4Szsz+r3bV\nlfnJktUgtwVFlXPSQQ2RMh6iQdlZWv9Jrl64wp99msMDL1gOWQ9FuZ2AJsW51XZY\nx8wMvsx6Emx/8D1L7RWwiCweNvK6duah2pnYpiVs77ckrj2zd61C8fa4wjU65yWP\n8n5SlkzvNMs8eVQx3x+Qvx5bLsoO/5a1UKfH5rJGikF5R3cvasZiqZDePjqQ2eqe\njPCiV/Xx4i9iG5lwYJlQYMC3R2x7NNh7pAhwlKapCQKBgQDvJH4702oL/Qyc5bkv\nTQdK95dL56hzuQ0UKzUopqJq7QRzialJHShhR8sOC/cTj0Xo3vGSw2mkeyYEo8Ad\nhNkjNJc3Ncoho49UzbprHVz3VPtlpw2jTbwgnpy8Sy3xIR/nZ9KULSb+k+hueaGY\nJ6KLcaP2IWwM9UUEhylbhRvp7wKBgQDPB6xyFNnVcezXV+5XNso9RZ390pEMtbOs\nwNbT4kUGFoKfWx0PJyRg814L+mT8nLjrwZeZPudfy4+wEzbA2D7bJOvF4d0WUPYA\n0Lm4/f3tNdCvYCO4nRoVwL+WiU7GzknrYVABULuHln4oCdfeatQOZ2xa19Zypl0A\n3/Q+lUaKxQKBgD77MXO4HjnCD0xTBA59DuqjgmkvPaIcnmEtb/agzC209nMnUjo7\nP6M/MS8l35B7L0JBVQX+CRiUhlK6faJIlpc7Bog31mA9n0YKWIpVVWKeMwd2k5Tq\nqB0/KLA+bH8Q5kIficoUiiyJ77EIv5I+/gQTjccIzlgrUF386tt7lvppAoGAbpiI\n1MCyxcWAYmGE325Th3vjNK8B8ao3e7fgi3w6p0/rI7oGwguE8Y3Q1dFDlXcbikX2\n+FSUQaZ68fKxsz9SBLuqgCFye/NwF2tpa5uzxL6U5rsTGhJC1xAKyR48yRN2hZmM\npcc9BuesKTNo8FZdRfyV88mNs92PnWIGFlCkSIkCgYA7Qp9JyAOEno1larzz9wUe\n5SkVJewohmy9h5Vz929PdFbcZJ0dBx1W1PCeq/UUyrRvVEpLA+wQy0OVcjOXLRmJ\n3GvYkH9WYzlSLdKmTzeMzOztA+5KvvssFzM/jY8t/2w1LV3X+MvtwigVxEaU1fYL\nvO3SUYEm2LVtdtP6EZwv+Q==\n-----END PRIVATE KEY-----\n",
-    client_email: "firebase-adminsdk-fbsvc@counselorpro-6975d.iam.gserviceaccount.com",
-    client_id: "101900922139634466653",
-    auth_uri: "https://accounts.google.com/o/oauth2/auth",
-    token_uri: "https://oauth2.googleapis.com/token",
-    auth_provider_x509_cert_url: "https://www.googleapis.com/oauth2/v1/certs",
-    client_x509_cert_url: "https://www.googleapis.com/robot/v1/metadata/x509/firebase-adminsdk-fbsvc%40counselorpro-6975d.iam.gserviceaccount.com",
-    universe_domain: "googleapis.com"
-  };
-
-  const keyPath = path.resolve("serviceAccountKey.json");
-  const jsonPath = path.resolve("colleges_2024.json");
-
   try {
-    // Write credentials and input data securely on the server
-    fs.writeFileSync(keyPath, JSON.stringify(serviceAccount, null, 2), "utf8");
-    fs.writeFileSync(jsonPath, JSON.stringify(data, null, 2), "utf8");
-    console.log(`Created temp serviceAccountKey.json and colleges_2024.json of size ${data.length} entries.`);
+    const authHeader = req.headers["authorization"] || "";
+    if (!authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({ error: "Access Denied: Missing or malformed Authorization header." });
+    }
 
-    // Run the upload_admin.ts script using npx tsx
-    exec("npx tsx upload_admin.ts", (error, stdout, stderr) => {
-      // Clean up the private credentials file immediately
+    const idToken = authHeader.substring(7);
+    const serviceAccount = getServiceAccount();
+    if (!serviceAccount) {
+      return res.status(500).json({ error: "Server Error: Firebase environment variables are not configured on this server." });
+    }
+
+    // Verify the Firebase ID Token using firebase-admin
+    const decodedToken = await getAuth().verifyIdToken(idToken);
+    const email = decodedToken.email;
+
+    if (email !== "sarathdasireddy369@gmail.com") {
+      return res.status(403).json({ error: `Access Denied: Account '${email}' is not authorized. Only sarathdasireddy369@gmail.com can modify the database.` });
+    }
+
+    const data = req.body;
+    if (!Array.isArray(data)) {
+      return res.status(400).json({ error: "Invalid data format. Expected a JSON array of college-branch entries." });
+    }
+
+    const keyPath = path.resolve("serviceAccountKey.json");
+    const jsonPath = path.resolve("colleges_2024.json");
+
+    try {
+      // Write credentials and input data securely on the server
+      fs.writeFileSync(keyPath, JSON.stringify(serviceAccount, null, 2), "utf8");
+      fs.writeFileSync(jsonPath, JSON.stringify(data, null, 2), "utf8");
+      console.log(`Created temp serviceAccountKey.json and colleges_2024.json of size ${data.length} entries.`);
+
+      // Run the upload_admin.ts script using npx tsx
+      exec("npx tsx upload_admin.ts", (error, stdout, stderr) => {
+        // Clean up the private credentials file immediately
+        if (fs.existsSync(keyPath)) {
+          fs.unlinkSync(keyPath);
+        }
+
+        if (error) {
+          console.error("Upload process error:", stderr);
+          return res.status(500).json({ error: "Firestore upload script failed", details: stderr });
+        }
+
+        console.log("Upload script executed successfully:\n", stdout);
+        // Invalidate the cache to ensure new data is loaded next time
+        cachedCollegesResponse = null;
+        firestoreUnavailable = false;
+
+        return res.json({ 
+          message: "Successfully uploaded to Firebase", 
+          details: stdout, 
+          count: data.length 
+        });
+      });
+
+    } catch (writeErr: any) {
       if (fs.existsSync(keyPath)) {
         fs.unlinkSync(keyPath);
       }
-
-      if (error) {
-        console.error("Upload process error:", stderr);
-        return res.status(500).json({ error: "Firestore upload script failed", details: stderr });
-      }
-
-      console.log("Upload script executed successfully:\n", stdout);
-      // Invalidate the cache to ensure new data is loaded next time
-      cachedCollegesResponse = null;
-      firestoreUnavailable = false;
-
-      return res.json({ 
-        message: "Successfully uploaded to Firebase", 
-        details: stdout, 
-        count: data.length 
-      });
-    });
-
-  } catch (err: any) {
-    if (fs.existsSync(keyPath)) {
-      fs.unlinkSync(keyPath);
+      console.error("Endpoint execution error writing temp files:", writeErr);
+      return res.status(500).json({ error: "Internal server execution failure", details: writeErr.message });
     }
-    console.error("Endpoint execution error:", err);
-    return res.status(500).json({ error: "Internal server execution failure", details: err.message });
+
+  } catch (authErr: any) {
+    console.error("Authentication or authorization failed:", authErr.message);
+    return res.status(401).json({ error: "Authorization Failed: Invalid or expired Firebase ID token.", details: authErr.message });
   }
 });
 
