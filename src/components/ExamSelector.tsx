@@ -1,16 +1,25 @@
 import React from 'react';
 import { motion } from 'motion/react';
 import { ExamType } from '../types';
-import { ArrowRight, Landmark, GraduationCap } from 'lucide-react';
+import { ArrowRight, Landmark, GraduationCap, Cpu, FlaskConical } from 'lucide-react';
 
 interface ExamSelectorProps {
   selectedExam: ExamType | null;
+  selectedStream: 'MPC' | 'BiPC';
   onSelect: (exam: ExamType) => void;
+  onSelectStream: (stream: 'MPC' | 'BiPC') => void;
   onNext: () => void;
   onBack: () => void;
 }
 
-export default function ExamSelector({ selectedExam, onSelect, onNext, onBack }: ExamSelectorProps) {
+export default function ExamSelector({ 
+  selectedExam, 
+  selectedStream,
+  onSelect, 
+  onSelectStream,
+  onNext, 
+  onBack 
+}: ExamSelectorProps) {
   return (
     <div className="max-w-4xl mx-auto py-8 px-4" id="exam-selector-step">
       <div className="text-center mb-8">
@@ -18,10 +27,10 @@ export default function ExamSelector({ selectedExam, onSelect, onNext, onBack }:
           Step 1 of 4
         </span>
         <h2 className="font-sans font-bold text-3xl text-slate-900 mt-3 tracking-tight">
-          Select Your Counselling Exam
+          Select Your Counselling Exam & Stream
         </h2>
         <p className="text-slate-500 mt-2 text-sm max-w-xl mx-auto">
-          Choose the common entrance test system you appeared for. This loads the correct database of state universities, private colleges, and cutoffs.
+          Choose the entrance test system you appeared for and your high school stream to load the correct database of matching courses and cutoffs.
         </p>
       </div>
 
@@ -93,11 +102,67 @@ export default function ExamSelector({ selectedExam, onSelect, onNext, onBack }:
         </div>
       </div>
 
+      {/* Stream Selection */}
+      {selectedExam && (
+        <motion.div
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mt-8 bg-white border border-slate-200 rounded-2xl p-6 shadow-xs"
+        >
+          <div className="text-center mb-5">
+            <h3 className="font-sans font-bold text-slate-900 text-base">
+              Select Your Academic Stream
+            </h3>
+            <p className="text-xs text-slate-500 mt-1">
+              Select your high school stream to unlock eligible seat branches and accurate cutoff profiles.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* MPC Option */}
+            <div
+              onClick={() => onSelectStream('MPC')}
+              className={`cursor-pointer p-4 rounded-xl border-2 transition-all flex items-center gap-4 ${
+                selectedStream === 'MPC'
+                  ? 'border-emerald-600 bg-emerald-50/40 ring-1 ring-emerald-600'
+                  : 'border-slate-200 hover:border-slate-300 bg-white shadow-3xs'
+              }`}
+            >
+              <div className={`p-2.5 rounded-lg ${selectedStream === 'MPC' ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                <Cpu className="w-5 h-5" />
+              </div>
+              <div className="text-left">
+                <h4 className="font-sans font-bold text-xs text-slate-900">MPC Stream (Engineering)</h4>
+                <p className="text-[10px] text-slate-500 leading-tight">CSE, ECE, EEE, MECH, CIVIL, INF & IT branches</p>
+              </div>
+            </div>
+
+            {/* BiPC Option */}
+            <div
+              onClick={() => onSelectStream('BiPC')}
+              className={`cursor-pointer p-4 rounded-xl border-2 transition-all flex items-center gap-4 ${
+                selectedStream === 'BiPC'
+                  ? 'border-emerald-600 bg-emerald-50/40 ring-1 ring-emerald-600'
+                  : 'border-slate-200 hover:border-slate-300 bg-white shadow-3xs'
+              }`}
+            >
+              <div className={`p-2.5 rounded-lg ${selectedStream === 'BiPC' ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                <FlaskConical className="w-5 h-5" />
+              </div>
+              <div className="text-left">
+                <h4 className="font-sans font-bold text-xs text-slate-900">BiPC Stream (Agri, Pharma, Bio)</h4>
+                <p className="text-[10px] text-slate-500 leading-tight">Agriculture, Pharmacy, Bio-Tech & Pharma-D branches</p>
+              </div>
+            </div>
+          </div>
+        </motion.div>
+      )}
+
       {/* Button Controls */}
-      <div className="mt-12 flex justify-between items-center border-t border-slate-200 pt-6">
+      <div className="mt-8 flex justify-between items-center border-t border-slate-200 pt-6">
         <button
           onClick={onBack}
-          className="px-6 py-2.5 text-slate-600 hover:bg-slate-100 rounded-lg transition-all font-medium cursor-pointer"
+          className="px-6 py-2.5 text-slate-600 hover:bg-slate-100 rounded-lg transition-all font-medium cursor-pointer text-xs"
         >
           Back to Start
         </button>
@@ -105,7 +170,7 @@ export default function ExamSelector({ selectedExam, onSelect, onNext, onBack }:
           onClick={onNext}
           disabled={!selectedExam}
           id="exam-next-btn"
-          className={`px-8 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-lg shadow-md transition-all flex items-center gap-2 cursor-pointer ${
+          className={`px-8 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-lg shadow-md transition-all flex items-center gap-2 cursor-pointer text-xs ${
             !selectedExam ? 'opacity-50 cursor-not-allowed bg-slate-300 shadow-none hover:bg-slate-300' : ''
           }`}
         >

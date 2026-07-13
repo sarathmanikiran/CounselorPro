@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import LandingPage from './components/LandingPage';
 import ExamSelector from './components/ExamSelector';
@@ -9,7 +9,7 @@ import FinalReview from './components/FinalReview';
 import SuccessScreen from './components/SuccessScreen';
 import AdminModal from './components/AdminModal';
 import { StudentProfile, WebOption, ExamType } from './types';
-import { Compass, Sparkles, CheckCircle, GraduationCap, Database } from 'lucide-react';
+import { Compass, Sparkles, CheckCircle, GraduationCap, Database, Save } from 'lucide-react';
 import { loadRealColleges } from './data/colleges';
 
 type StepType = 'LANDING' | 'SELECT_EXAM' | 'ENTER_DETAILS' | 'ENTRY_WORKFLOW' | 'REFINEMENT' | 'FINAL_REVIEW' | 'SUCCESS';
@@ -36,13 +36,16 @@ export default function App() {
     const saved = localStorage.getItem('counselor_profile');
     if (saved) {
       try {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        if (!parsed.stream) parsed.stream = 'MPC';
+        return parsed;
       } catch (e) {
         // Fallback below
       }
     }
     return {
       exam: null,
+      stream: 'MPC',
       rank: 15000,
       gender: 'Male',
       category: 'OC',
@@ -108,6 +111,72 @@ export default function App() {
     localStorage.setItem('counselor_selectedOptions', JSON.stringify(selectedOptions));
   }, [selectedOptions]);
 
+  // Save Draft state and handler
+  const [showSaveToast, setShowSaveToast] = useState(false);
+
+  const handleSaveDraft = () => {
+    localStorage.setItem('counselor_step', step);
+    localStorage.setItem('counselor_profile', JSON.stringify(profile));
+    localStorage.setItem('counselor_selectedOptions', JSON.stringify(selectedOptions));
+    setShowSaveToast(true);
+  };
+
+  useEffect(() => {
+    if (showSaveToast) {
+      const timer = setTimeout(() => {
+        setShowSaveToast(false);
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [showSaveToast]);
+
+  // Swipe navigation gesture handlers for mobile
+  const touchStartRef = useRef<{ x: number; y: number } | null>(null);
+
+  const handleSwipeNext = () => {
+    if (step === 'SELECT_EXAM' && profile.exam) {
+      setStep('ENTER_DETAILS');
+    } else if (step === 'ENTER_DETAILS') {
+      setStep('ENTRY_WORKFLOW');
+    } else if (step === 'ENTRY_WORKFLOW') {
+      setStep('FINAL_REVIEW');
+    }
+  };
+
+  const handleSwipePrev = () => {
+    if (step === 'SELECT_EXAM') {
+      setStep('LANDING');
+    } else if (step === 'ENTER_DETAILS') {
+      setStep('SELECT_EXAM');
+    } else if (step === 'ENTRY_WORKFLOW') {
+      setStep('ENTER_DETAILS');
+    } else if (step === 'FINAL_REVIEW') {
+      setStep('ENTRY_WORKFLOW');
+    }
+  };
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    const touch = e.touches[0];
+    touchStartRef.current = { x: touch.clientX, y: touch.clientY };
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (!touchStartRef.current) return;
+    const touch = e.changedTouches[0];
+    const diffX = touchStartRef.current.x - touch.clientX;
+    const diffY = touchStartRef.current.y - touch.clientY;
+
+    // Must be a predominantly horizontal swipe, minimum 80px difference
+    if (Math.abs(diffX) > Math.abs(diffY) && Math.abs(diffX) > 80) {
+      if (diffX > 0) {
+        handleSwipeNext();
+      } else {
+        handleSwipePrev();
+      }
+    }
+    touchStartRef.current = null;
+  };
+
   // Step indicator details
   const getStepNumber = (currentStep: StepType): number => {
     switch(currentStep) {
@@ -128,6 +197,7 @@ export default function App() {
     localStorage.removeItem('counselor_selectedOptions');
     setProfile({
       exam: null,
+      stream: 'MPC',
       rank: 15000,
       gender: 'Male',
       category: 'OC',
@@ -153,16 +223,16 @@ export default function App() {
       
       {/* Dynamic Header when inside active counselling wizard or completion screen */}
       {step !== 'LANDING' && (
-        <header className="border-b border-slate-200 bg-white sticky top-0 z-50 px-6 py-3.5 shadow-xs">
+        <header className="border-b border-slate-200 bg-white sticky top-0 z-50 px-4 sm:px-6 py-2.5 sm:py-3.5 shadow-xs">
           <div className="max-w-7xl mx-auto flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2 cursor-pointer" onClick={resetSimulation}>
-              <div className="p-1.5 bg-emerald-600 text-white rounded-md">
+            <div className="flex items-center gap-2 cursor-pointer min-w-0 shrink-0" onClick={resetSimulation}>
+              <div className="p-1.5 bg-emerald-600 text-white rounded-md shrink-0">
                 <Compass className="w-5 h-5" />
               </div>
-              <span className="font-sans font-extrabold text-slate-900 tracking-tight text-lg">CounselorPro</span>
+              <span className="font-sans font-extrabold text-slate-900 tracking-tight text-base sm:text-lg truncate">CounselorPro</span>
             </div>
 
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2 sm:gap-4 shrink-0">
               {/* Wizard Progress bar */}
               {currentStepNum > 0 && (
                 <div className="hidden md:flex items-center gap-4 w-full sm:w-auto max-w-md">
@@ -194,10 +264,10 @@ export default function App() {
 
               <button 
                 onClick={() => setIsAdminOpen(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 rounded-lg text-xs font-semibold font-mono transition-all cursor-pointer shadow-2xs"
+                className="flex items-center gap-1 sm:gap-1.5 px-2.5 py-1.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 rounded-lg text-[10px] sm:text-xs font-semibold font-mono transition-all cursor-pointer shadow-2xs shrink-0"
               >
                 <Database className="w-3.5 h-3.5" />
-                DATABASE ADMIN
+                <span className="hidden sm:inline">DATABASE </span>ADMIN
               </button>
             </div>
           </div>
@@ -205,7 +275,11 @@ export default function App() {
       )}
 
       {/* Main content viewport */}
-      <div className="flex-grow flex flex-col">
+      <div 
+        className="flex-grow flex flex-col"
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+      >
         <AnimatePresence mode="wait">
           <motion.div
             key={step}
@@ -225,7 +299,9 @@ export default function App() {
             {step === 'SELECT_EXAM' && (
               <ExamSelector
                 selectedExam={profile.exam}
+                selectedStream={profile.stream || 'MPC'}
                 onSelect={handleSelectExam}
+                onSelectStream={(stream) => setProfile(prev => ({ ...prev, stream }))}
                 onNext={() => setStep('ENTER_DETAILS')}
                 onBack={() => setStep('LANDING')}
               />
@@ -271,6 +347,40 @@ export default function App() {
           </motion.div>
         </AnimatePresence>
       </div>
+
+      {/* Save Draft Toast Notification */}
+      <AnimatePresence>
+        {showSaveToast && (
+          <motion.div
+            initial={{ opacity: 0, y: 50, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 20, scale: 0.95 }}
+            className="fixed bottom-24 left-4 right-4 md:left-auto md:right-6 md:w-96 bg-slate-900/95 backdrop-blur-md text-white p-4 rounded-xl shadow-xl border border-slate-800 flex items-center gap-3 z-50"
+          >
+            <div className="p-2 bg-emerald-500/20 text-emerald-400 rounded-lg">
+              <CheckCircle className="w-5 h-5" />
+            </div>
+            <div>
+              <p className="font-sans font-bold text-sm text-white">Draft Saved Successfully!</p>
+              <p className="text-xs text-slate-400">Your profile, preferences, and selected web options are preserved.</p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Sticky Floating 'Save Draft' Action Button for Mobile Devices */}
+      {step !== 'LANDING' && step !== 'SUCCESS' && (
+        <div className="fixed bottom-6 right-6 md:hidden z-40">
+          <button
+            onClick={handleSaveDraft}
+            className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-bold px-4 py-3 rounded-full shadow-lg border border-emerald-500/20 cursor-pointer hover:scale-105 active:scale-95 transition-all text-xs tracking-wide uppercase font-mono"
+            title="Save Current Draft"
+          >
+            <Save className="w-4 h-4" />
+            <span>Save Draft</span>
+          </button>
+        </div>
+      )}
       
       <AdminModal 
         isOpen={isAdminOpen} 

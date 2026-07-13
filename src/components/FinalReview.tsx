@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { StudentProfile, WebOption, MockAllotmentResult } from '../types';
-import { COLLEGES_DB, getCollegeCutoff } from '../data/colleges';
+import { COLLEGES_DB, getCollegeCutoff, getCollegesForStream } from '../data/colleges';
 import { ArrowLeft, CheckCircle2, Award, Download, Building, DollarSign, Calendar, FileText, Sparkles, HelpCircle, AlertTriangle } from 'lucide-react';
 
 interface FinalReviewProps {
@@ -21,12 +21,13 @@ export default function FinalReview({ profile, selectedOptions, onBack, onFinish
     // Simulate real seat matching processing time
     setTimeout(() => {
       let allottedResult: MockAllotmentResult = { allotted: false };
+      const collegesList = getCollegesForStream(profile.stream);
 
       // Loop through choices in sequential priority order (1 to N)
       for (let i = 0; i < selectedOptions.length; i++) {
         const option = selectedOptions[i];
         // Match option against our DB
-        const collegeDb = COLLEGES_DB.find(c => c.id === option.collegeId);
+        const collegeDb = collegesList.find(c => c.id === option.collegeId);
         
         if (collegeDb) {
           const cutoff = getCollegeCutoff(collegeDb, profile.category);

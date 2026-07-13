@@ -11,31 +11,31 @@ export default function LandingPage({ onStart, onAdminClick }: LandingPageProps)
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col justify-between" id="landing-page">
       {/* Top Header */}
-      <header className="border-b border-slate-200 bg-white sticky top-0 z-50 px-6 py-4">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="p-2 bg-emerald-600 text-white rounded-lg shadow-sm">
-              <Compass className="w-6 h-6 animate-spin-slow" />
+      <header className="border-b border-slate-200 bg-white sticky top-0 z-50 px-4 sm:px-6 py-3.5 sm:py-4">
+        <div className="max-w-7xl mx-auto flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="p-1.5 sm:p-2 bg-emerald-600 text-white rounded-lg shadow-sm shrink-0">
+              <Compass className="w-5 h-5 sm:w-6 sm:h-6 animate-spin-slow" />
             </div>
-            <div>
-              <span className="font-sans font-bold text-xl tracking-tight text-slate-900">CounselorPro</span>
-              <span className="ml-2 px-2 py-0.5 text-xs font-semibold text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-full">AI Simulator</span>
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="font-sans font-bold text-base sm:text-xl tracking-tight text-slate-900 truncate">CounselorPro</span>
+              <span className="hidden sm:inline-block px-2 py-0.5 text-xs font-semibold text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-full shrink-0">AI Simulator</span>
             </div>
           </div>
-          <div className="flex items-center gap-4 text-xs font-mono text-slate-500">
-            <span className="hidden sm:inline">PLATFORM: AP/TS WEB OPTIONS v2.5</span>
-            <span className="hidden sm:inline h-4 w-px bg-slate-200"></span>
+          <div className="flex items-center gap-2 sm:gap-4 text-xs font-mono text-slate-500 shrink-0">
+            <span className="hidden md:inline">PLATFORM: AP/TS WEB OPTIONS v2.5</span>
+            <span className="hidden md:inline h-4 w-px bg-slate-200"></span>
             <button 
               onClick={onAdminClick}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 rounded-lg text-xs font-semibold font-mono transition-all cursor-pointer shadow-2xs"
+              className="flex items-center gap-1 sm:gap-1.5 px-2.5 py-1.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 rounded-lg text-[10px] sm:text-xs font-semibold font-mono transition-all cursor-pointer shadow-2xs shrink-0"
             >
               <Database className="w-3.5 h-3.5" />
-              DATABASE ADMIN
+              <span className="hidden sm:inline">DATABASE </span>ADMIN
             </button>
-            <span className="h-4 w-px bg-slate-200"></span>
-            <span className="flex items-center gap-1">
+            <span className="hidden sm:inline h-4 w-px bg-slate-200"></span>
+            <span className="flex items-center gap-1 shrink-0">
               <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></span>
-              LIVE SIMULATOR
+              <span className="hidden sm:inline">LIVE SIMULATOR</span>
             </span>
           </div>
         </div>

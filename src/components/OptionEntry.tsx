@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { College, StudentProfile, WebOption } from '../types';
-import { COLLEGES_DB, getSeatProbability } from '../data/colleges';
+import { COLLEGES_DB, getSeatProbability, getCollegesForStream } from '../data/colleges';
 import { Search, Filter, Plus, Trash2, ArrowUp, ArrowDown, ListOrdered, GraduationCap, DollarSign, RefreshCw, AlertCircle, CheckCircle2, ArrowLeftRight } from 'lucide-react';
 
 interface OptionEntryProps {
@@ -18,21 +18,26 @@ export default function OptionEntry({ profile, selectedOptions, onUpdateOptions,
   const [selectedType, setSelectedType] = useState('ALL');
   const [selectedProb, setSelectedProb] = useState('ALL');
   
+  // Compute dynamically adapted colleges based on stream (MPC / BiPC)
+  const collegesList = useMemo(() => {
+    return getCollegesForStream(profile.stream);
+  }, [profile.stream]);
+
   // College comparison slot states
   const [compareAId, setCompareAId] = useState<string>('');
   const [compareBId, setCompareBId] = useState<string>('');
 
   const compareCollegeA = useMemo(() => {
-    return COLLEGES_DB.find(c => c.id === compareAId) || null;
-  }, [compareAId]);
+    return collegesList.find(c => c.id === compareAId) || null;
+  }, [compareAId, collegesList]);
 
   const compareCollegeB = useMemo(() => {
-    return COLLEGES_DB.find(c => c.id === compareBId) || null;
-  }, [compareBId]);
+    return collegesList.find(c => c.id === compareBId) || null;
+  }, [compareBId, collegesList]);
 
   const allExamColleges = useMemo(() => {
-    return COLLEGES_DB.filter(c => c.exam === profile.exam).sort((a, b) => a.name.localeCompare(b.name));
-  }, [profile.exam]);
+    return collegesList.filter(c => c.exam === profile.exam).sort((a, b) => a.name.localeCompare(b.name));
+  }, [profile.exam, collegesList]);
 
   const handleCompareClick = (college: College) => {
     if (compareAId === college.id) {
@@ -60,7 +65,7 @@ export default function OptionEntry({ profile, selectedOptions, onUpdateOptions,
 
   // Filter colleges based on user profile's exam first, then other filters
   const filteredColleges = useMemo(() => {
-    return COLLEGES_DB.filter(col => {
+    return collegesList.filter(col => {
       // Must match the exam selected
       if (col.exam !== profile.exam) return false;
 
@@ -92,18 +97,18 @@ export default function OptionEntry({ profile, selectedOptions, onUpdateOptions,
 
       return true;
     });
-  }, [profile.exam, search, selectedBranch, selectedDistrict, selectedType, selectedProb, profile.rank, profile.category]);
+  }, [collegesList, profile.exam, search, selectedBranch, selectedDistrict, selectedType, selectedProb, profile.rank, profile.category]);
 
   // List of distinct districts & branches in the current exam database for drop-down filters
   const distinctDistricts = useMemo(() => {
-    const districts = COLLEGES_DB.filter(c => c.exam === profile.exam).map(c => c.district);
+    const districts = collegesList.filter(c => c.exam === profile.exam).map(c => c.district);
     return Array.from(new Set(districts)).sort();
-  }, [profile.exam]);
+  }, [profile.exam, collegesList]);
 
   const distinctBranches = useMemo(() => {
-    const branches = COLLEGES_DB.filter(c => c.exam === profile.exam).map(c => c.branch);
+    const branches = collegesList.filter(c => c.exam === profile.exam).map(c => c.branch);
     return Array.from(new Set(branches)).sort();
-  }, [profile.exam]);
+  }, [profile.exam, collegesList]);
 
   // Add an option to the priority list
   const addOption = (college: College) => {

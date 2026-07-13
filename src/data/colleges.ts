@@ -919,3 +919,36 @@ export async function loadRealColleges(): Promise<number> {
   return 0;
 }
 
+// Helper to retrieve colleges adapted for a specific academic stream (MPC vs BiPC)
+export function getCollegesForStream(stream: 'MPC' | 'BiPC'): College[] {
+  if (stream === 'MPC' || !stream) {
+    return COLLEGES_DB;
+  }
+
+  // Return adapted list for BiPC stream
+  return COLLEGES_DB.map((col, idx) => {
+    let newBranch = 'PHARM';
+    const br = col.branch.toUpperCase();
+    if (br.includes('CSE') || br.includes('CS') || br.includes('COMP') || br.includes('INF') || br.includes('IT')) {
+      newBranch = 'PHARM'; // B.Pharmacy
+    } else if (br.includes('ECE') || br.includes('EC') || br.includes('ELECT')) {
+      newBranch = 'AGRI'; // B.Sc. Agriculture
+    } else if (br.includes('EEE') || br.includes('EE') || br.includes('BIO') || br.includes('BT')) {
+      newBranch = 'BIOTECH'; // B.Tech Biotechnology
+    } else if (br.includes('MECH') || br.includes('ME') || br.includes('CHEM') || br.includes('CH')) {
+      newBranch = 'FOOD_TECH'; // B.Tech Food Technology
+    } else if (br.includes('CIVIL') || br.includes('CE')) {
+      newBranch = 'HORTI'; // B.Sc. Horticulture
+    } else {
+      newBranch = 'VET'; // B.V.Sc. Veterinary
+    }
+
+    return {
+      ...col,
+      branch: newBranch,
+      // Modify ID slightly so they are unique distinct items for BiPC options
+      id: `${col.id}-bipc-${idx}`
+    };
+  });
+}
+

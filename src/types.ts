@@ -2,6 +2,7 @@ export type ExamType = 'AP_EAPCET' | 'TS_EAMCET';
 
 export interface StudentProfile {
   exam: ExamType | null;
+  stream: 'MPC' | 'BiPC';
   rank: number;
   gender: 'Male' | 'Female';
   category: 'OC' | 'BC-A' | 'BC-B' | 'BC-C' | 'BC-D' | 'BC-E' | 'SC' | 'ST';
