@@ -27,8 +27,16 @@ export default function AdminModal({ isOpen, onClose, onUploadSuccess }: AdminMo
   const [firebaseApp, setFirebaseApp] = useState<any>(null);
   const [firebaseAuth, setFirebaseAuth] = useState<any>(null);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [idToken, setIdToken] = useState<string>('');
+  const [idToken, setIdToken] = useState<string>(() => {
+    const savedEmail = localStorage.getItem('admin_email');
+    const savedPasskey = localStorage.getItem('admin_passkey');
+    if (savedEmail === 'sarathdasireddy369@gmail.com' && savedPasskey) {
+      return `PASSKEY:${savedPasskey}`;
+    }
+    return '';
+  });
   const [isLoadingConfig, setIsLoadingConfig] = useState(true);
+  const [passcode, setPasscode] = useState('');
 
   // Load configuration and listen to authentication state
   useEffect(() => {
@@ -247,9 +255,42 @@ export default function AdminModal({ isOpen, onClose, onUploadSuccess }: AdminMo
     }
   };
 
+  const handlePasscodeSignIn = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!passcode.trim()) {
+      setAuthError('Please enter an administrator passcode.');
+      return;
+    }
+    setAuthError('');
+    setIsVerifying(true);
+    try {
+      const res = await fetch('/api/admin/verify-passcode', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ passcode: passcode.trim() })
+      });
+      const result = await res.json();
+      if (!res.ok) {
+        throw new Error(result.error || 'Passcode verification failed.');
+      }
+      
+      setIdToken(result.token);
+      setAdminEmail(result.email);
+      localStorage.setItem('admin_email', result.email);
+      localStorage.setItem('admin_passkey', passcode.trim());
+    } catch (err: any) {
+      console.error('Passcode Auth error:', err);
+      setAuthError(`Verification Error: ${err.message}`);
+    } finally {
+      setIsVerifying(false);
+    }
+  };
+
   const handleSignOutAdmin = async () => {
     localStorage.removeItem('admin_email');
+    localStorage.removeItem('admin_passkey');
     setAdminEmail('');
+    setIdToken('');
     resetPortal();
     if (firebaseAuth) {
       try {
@@ -304,35 +345,8 @@ export default function AdminModal({ isOpen, onClose, onUploadSuccess }: AdminMo
                   <RefreshCw className="w-6 h-6 text-emerald-600 animate-spin" />
                   <span className="text-xs text-slate-500 font-mono">Loading authentication options...</span>
                 </div>
-              ) : (!firebaseConfig?.apiKey || !firebaseConfig?.projectId) ? (
-                <div className="max-w-md mx-auto bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-4">
-                  <div className="flex gap-2.5 items-start">
-                    <AlertCircle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
-                    <div className="text-xs text-slate-700 space-y-1">
-                      <strong className="font-semibold text-slate-900">Firebase Configuration Required</strong>
-                      <p className="leading-relaxed text-slate-500">
-                        To secure this panel with Firebase Authentication and enable Firestore sync, please define these environment variables (secrets):
-                      </p>
-                    </div>
-                  </div>
-                  <div className="bg-slate-900 text-slate-300 font-mono text-[11px] p-3 rounded-lg space-y-1 select-all">
-                    <div># Firebase Project and Credentials</div>
-                    <div>FIREBASE_PROJECT_ID=...</div>
-                    <div>FIREBASE_PRIVATE_KEY_ID=...</div>
-                    <div>FIREBASE_PRIVATE_KEY=...</div>
-                    <div>FIREBASE_CLIENT_EMAIL=...</div>
-                    <div>FIREBASE_CLIENT_ID=...</div>
-                    <div className="mt-2"># Public Client SDK Configuration</div>
-                    <div>FIREBASE_API_KEY=...</div>
-                    <div>FIREBASE_AUTH_DOMAIN=...</div>
-                    <div>FIREBASE_APP_ID=...</div>
-                  </div>
-                  <p className="text-[10px] text-slate-400 leading-relaxed text-center">
-                    Once these variables are set in your AI Studio/environment secrets, restart the server to authenticate and upload your database safely.
-                  </p>
-                </div>
               ) : (
-                <div className="max-w-md mx-auto space-y-4">
+                <div className="max-w-md mx-auto space-y-5">
                   {authError && (
                     <div className="p-3.5 bg-red-50 border border-red-100 text-red-800 rounded-xl text-xs flex gap-2.5 items-start font-sans leading-relaxed animate-fade-in">
                       <AlertCircle className="w-4.5 h-4.5 text-red-600 shrink-0 mt-0.5" />
@@ -340,23 +354,78 @@ export default function AdminModal({ isOpen, onClose, onUploadSuccess }: AdminMo
                     </div>
                   )}
 
-                  <button
-                    onClick={handleGoogleSignIn}
-                    disabled={isVerifying}
-                    className="w-full py-3 px-4 bg-slate-900 hover:bg-slate-850 active:scale-[0.99] text-white font-bold rounded-xl text-xs tracking-wider uppercase font-mono shadow-sm transition-all flex items-center justify-center gap-2.5 cursor-pointer disabled:opacity-75"
-                  >
-                    {isVerifying ? (
-                      <>
+                  {/* Passkey Authentication Form */}
+                  <form onSubmit={handlePasscodeSignIn} className="space-y-4 bg-slate-50 border border-slate-200 rounded-2xl p-5">
+                    <div className="space-y-1.5">
+                      <label htmlFor="admin-passcode" className="block text-xs font-bold text-slate-700 uppercase tracking-wider font-mono">
+                        Enter Admin Passkey
+                      </label>
+                      <div className="relative">
+                        <Key className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                        <input
+                          id="admin-passcode"
+                          type="password"
+                          placeholder="••••••••"
+                          value={passcode}
+                          onChange={(e) => setPasscode(e.target.value)}
+                          disabled={isVerifying}
+                          className="w-full pl-9 pr-4 py-2.5 bg-white border border-slate-300 rounded-xl text-sm focus:outline-hidden focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all font-mono"
+                        />
+                      </div>
+                      <p className="text-[10px] text-slate-400 leading-relaxed font-sans">
+                        Alternative login bypass for restricted environments (e.g. unauthorized auth domains).
+                      </p>
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={isVerifying}
+                      className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white font-bold rounded-xl text-xs tracking-wider uppercase font-mono shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-75 font-semibold"
+                    >
+                      {isVerifying ? (
                         <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                        <span>Verifying Session...</span>
-                      </>
-                    ) : (
-                      <>
-                        <ShieldCheck className="w-4.5 h-4.5 text-emerald-400" />
-                        <span>Sign In with Google</span>
-                      </>
-                    )}
-                  </button>
+                      ) : (
+                        <CheckCircle className="w-4 h-4" />
+                      )}
+                      <span>Verify & Unlock</span>
+                    </button>
+                  </form>
+
+                  {firebaseConfig?.apiKey && firebaseConfig?.projectId ? (
+                    <>
+                      <div className="relative flex py-2 items-center">
+                        <div className="flex-grow border-t border-slate-200"></div>
+                        <span className="flex-shrink mx-3 text-[10px] text-slate-400 uppercase tracking-wider font-mono">OR</span>
+                        <div className="flex-grow border-t border-slate-200"></div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={handleGoogleSignIn}
+                        disabled={isVerifying}
+                        className="w-full py-3 px-4 bg-slate-900 hover:bg-slate-850 active:scale-[0.99] text-white font-bold rounded-xl text-xs tracking-wider uppercase font-mono shadow-sm transition-all flex items-center justify-center gap-2.5 cursor-pointer disabled:opacity-75"
+                      >
+                        {isVerifying ? (
+                          <>
+                            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                            <span>Verifying Session...</span>
+                          </>
+                        ) : (
+                          <>
+                            <ShieldCheck className="w-4.5 h-4.5 text-emerald-400" />
+                            <span>Sign In with Google</span>
+                          </>
+                        )}
+                      </button>
+                    </>
+                  ) : (
+                    <div className="p-3.5 bg-amber-50 border border-amber-100/60 rounded-xl flex gap-2.5 items-start text-[10px] text-amber-800 leading-relaxed font-sans">
+                      <AlertCircle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                      <div>
+                        <strong className="font-semibold block text-amber-900 mb-0.5">Firebase Client SDK Offline</strong>
+                        Configure Google Auth secrets (FIREBASE_API_KEY, etc.) to enable social login options.
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

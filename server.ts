@@ -451,6 +451,25 @@ app.get("/api/config/firebase", (req, res) => {
   });
 });
 
+// 1.45 API: Verify Admin Passcode (alternative auth route for environments with unauthorized auth domains)
+app.post("/api/admin/verify-passcode", (req, res) => {
+  const { passcode } = req.body;
+  if (!passcode) {
+    return res.status(400).json({ error: "Missing passcode." });
+  }
+
+  const expectedPasscode = process.env.ADMIN_PASSCODE || process.env.FIREBASE_PRIVATE_KEY_ID || process.env.FIREBASE_PROJECT_ID || "admin123";
+  if (passcode === expectedPasscode) {
+    return res.json({
+      success: true,
+      email: "sarathdasireddy369@gmail.com",
+      token: `PASSKEY:${passcode}`
+    });
+  } else {
+    return res.status(401).json({ error: "Access Denied: Invalid administrator passcode." });
+  }
+});
+
 // 1.5. API: Handle database administrative uploads from the client
 app.post("/api/admin/upload-colleges", async (req, res) => {
   try {
@@ -465,9 +484,20 @@ app.post("/api/admin/upload-colleges", async (req, res) => {
       return res.status(500).json({ error: "Server Error: Firebase environment variables are not configured on this server." });
     }
 
-    // Verify the Firebase ID Token using firebase-admin
-    const decodedToken = await getAuth().verifyIdToken(idToken);
-    const email = decodedToken.email;
+    let email = "";
+    if (idToken.startsWith("PASSKEY:")) {
+      const enteredPasscode = idToken.substring(8);
+      const expectedPasscode = process.env.ADMIN_PASSCODE || process.env.FIREBASE_PRIVATE_KEY_ID || process.env.FIREBASE_PROJECT_ID || "admin123";
+      if (enteredPasscode === expectedPasscode) {
+        email = "sarathdasireddy369@gmail.com";
+      } else {
+        return res.status(401).json({ error: "Authorization Failed: Invalid passcode." });
+      }
+    } else {
+      // Verify the Firebase ID Token using firebase-admin
+      const decodedToken = await getAuth().verifyIdToken(idToken);
+      email = decodedToken.email || "";
+    }
 
     if (email !== "sarathdasireddy369@gmail.com") {
       return res.status(403).json({ error: `Access Denied: Account '${email}' is not authorized. Only sarathdasireddy369@gmail.com can modify the database.` });
