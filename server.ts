@@ -356,6 +356,64 @@ app.get("/api/config/firebase", (req, res) => {
   });
 });
 
+// 1.4. API: Handle coming soon notification requests
+app.post("/api/notify-request", async (req, res) => {
+  try {
+    const { email, examGroup } = req.body;
+
+    if (!email || typeof email !== "string") {
+      return res.status(400).json({ error: "Email is required and must be a string." });
+    }
+
+    const trimmedEmail = email.trim().toLowerCase();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(trimmedEmail)) {
+      return res.status(400).json({ error: "Please enter a valid email address." });
+    }
+
+    const group = examGroup || "TS_EAPCET_BIPC";
+
+    if (!firestoreDb) {
+      console.warn("[NOTIFY SERVICE] Firebase Admin not configured. Simulating success for notify-request in local development.");
+      return res.status(200).json({
+        success: true,
+        message: "Successfully signed up! (Local development mock success)",
+        simulated: true,
+      });
+    }
+
+    // Check for duplicate-email-per-examGroup
+    const dupCheck = await firestoreDb.collection("notify_requests")
+      .where("email", "==", trimmedEmail)
+      .where("examGroup", "==", group)
+      .limit(1)
+      .get();
+
+    if (!dupCheck.empty) {
+      return res.status(200).json({
+        success: true,
+        message: "You are already registered for notification!",
+        alreadyExists: true,
+      });
+    }
+
+    // Write a document with { email, examGroup, timestamp: server timestamp }
+    await firestoreDb.collection("notify_requests").add({
+      email: trimmedEmail,
+      examGroup: group,
+      timestamp: new Date()
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Successfully registered for notification!",
+    });
+  } catch (err: any) {
+    console.error("[NOTIFY SERVICE ERROR] Failed to register notification in local server:", err);
+    return res.status(500).json({ error: "Server error occurred: " + err.message });
+  }
+});
+
 // 1.5. API: Handle database administrative uploads from the client
 app.post("/api/admin/upload-colleges", async (req, res) => {
   try {

@@ -7,6 +7,7 @@ import ProfileForm from './components/ProfileForm';
 import OptionEntry from './components/OptionEntry';
 import ChoiceRefinement from './components/ChoiceRefinement';
 import FinalReview from './components/FinalReview';
+import ComingSoon from './components/ComingSoon';
 
 const SuccessScreen = React.lazy(() => import('./components/SuccessScreen'));
 const AdminModal = React.lazy(() => import('./components/AdminModal'));
@@ -15,7 +16,7 @@ import { StudentProfile, WebOption, ExamType } from './types';
 import { Compass, Sparkles, CheckCircle, GraduationCap, Database, Save } from 'lucide-react';
 import { loadRealCollegesForExam, COLLEGES_SOURCE } from './data/colleges';
 
-type StepType = 'LANDING' | 'SELECT_EXAM' | 'ENTER_DETAILS' | 'ENTRY_WORKFLOW' | 'REFINEMENT' | 'FINAL_REVIEW' | 'SUCCESS';
+type StepType = 'LANDING' | 'SELECT_EXAM' | 'ENTER_DETAILS' | 'ENTRY_WORKFLOW' | 'REFINEMENT' | 'FINAL_REVIEW' | 'SUCCESS' | 'COMING_SOON';
 
 export default function App() {
   const navigate = useNavigate();
@@ -158,7 +159,11 @@ export default function App() {
 
   const handleSwipeNext = () => {
     if (step === 'SELECT_EXAM' && profile.exam) {
-      setStep('ENTER_DETAILS');
+      if (profile.exam === 'TS_EAMCET' && profile.stream === 'BiPC') {
+        setStep('COMING_SOON');
+      } else {
+        setStep('ENTER_DETAILS');
+      }
     } else if (step === 'ENTER_DETAILS') {
       setStep('ENTRY_WORKFLOW');
     } else if (step === 'ENTRY_WORKFLOW') {
@@ -170,6 +175,8 @@ export default function App() {
     if (step === 'SELECT_EXAM') {
       setStep('LANDING');
     } else if (step === 'ENTER_DETAILS') {
+      setStep('SELECT_EXAM');
+    } else if (step === 'COMING_SOON') {
       setStep('SELECT_EXAM');
     } else if (step === 'ENTRY_WORKFLOW') {
       setStep('ENTER_DETAILS');
@@ -362,8 +369,20 @@ export default function App() {
                 selectedStream={profile.stream || 'MPC'}
                 onSelect={handleSelectExam}
                 onSelectStream={(stream) => setProfile(prev => ({ ...prev, stream }))}
-                onNext={() => setStep('ENTER_DETAILS')}
+                onNext={() => {
+                  if (profile.exam === 'TS_EAMCET' && profile.stream === 'BiPC') {
+                    setStep('COMING_SOON');
+                  } else {
+                    setStep('ENTER_DETAILS');
+                  }
+                }}
                 onBack={() => setStep('LANDING')}
+              />
+            )}
+
+            {step === 'COMING_SOON' && (
+              <ComingSoon
+                onBack={() => setStep('SELECT_EXAM')}
               />
             )}
 
