@@ -13,7 +13,7 @@ const AdminModal = React.lazy(() => import('./components/AdminModal'));
 
 import { StudentProfile, WebOption, ExamType } from './types';
 import { Compass, Sparkles, CheckCircle, GraduationCap, Database, Save } from 'lucide-react';
-import { loadRealColleges, COLLEGES_SOURCE } from './data/colleges';
+import { loadRealCollegesForExam, COLLEGES_SOURCE } from './data/colleges';
 
 type StepType = 'LANDING' | 'SELECT_EXAM' | 'ENTER_DETAILS' | 'ENTRY_WORKFLOW' | 'REFINEMENT' | 'FINAL_REVIEW' | 'SUCCESS';
 
@@ -31,7 +31,7 @@ export default function App() {
     source: 'Initializing...'
   });
 
-  const [loadingColleges, setLoadingColleges] = useState(true);
+  const [loadingColleges, setLoadingColleges] = useState(false);
 
   // 1. Wizard & Data Persistence state loaded from localStorage
   const [step, setStep] = useState<StepType>(() => {
@@ -80,34 +80,46 @@ export default function App() {
     localStorage.removeItem('counselor_theme');
   }, []);
 
-  // Fetch the real colleges database from the dynamic API/Firestore on boot
+  // Fetch the real colleges database dynamically ONLY when the user selects their exam + stream (Requirement 4 & 5)
   useEffect(() => {
-    setLoadingColleges(true);
-    loadRealColleges().then(count => {
-      if (count > 0) {
-        setDbStatus({
-          loaded: true,
-          count,
-          source: COLLEGES_SOURCE
-        });
-      } else {
-        setDbStatus({
-          loaded: false,
-          count: 0,
-          source: COLLEGES_SOURCE || 'Simulator Fallback'
-        });
-      }
-    }).catch(err => {
-      console.error('Error fetching colleges database:', err);
+    if (!profile.exam) {
       setDbStatus({
         loaded: false,
         count: 0,
-        source: 'Error loading database'
+        source: 'Select an exam first'
       });
-    }).finally(() => {
-      setLoadingColleges(false);
-    });
-  }, []);
+      return;
+    }
+
+    setLoadingColleges(true);
+    loadRealCollegesForExam(profile.exam, profile.stream || 'MPC', 2025)
+      .then(count => {
+        if (count > 0) {
+          setDbStatus({
+            loaded: true,
+            count,
+            source: COLLEGES_SOURCE
+          });
+        } else {
+          setDbStatus({
+            loaded: false,
+            count: 0,
+            source: COLLEGES_SOURCE || 'Fallback'
+          });
+        }
+      })
+      .catch(err => {
+        console.error('Error fetching colleges database:', err);
+        setDbStatus({
+          loaded: false,
+          count: 0,
+          source: 'Error loading database'
+        });
+      })
+      .finally(() => {
+        setLoadingColleges(false);
+      });
+  }, [profile.exam, profile.stream]);
 
   // Form State and Wizard Step change sync
   useEffect(() => {
@@ -425,15 +437,17 @@ export default function App() {
           isOpen={isAdminOpen} 
           onClose={() => navigate('/')} 
           onUploadSuccess={() => {
-            loadRealColleges().then(count => {
-              if (count > 0) {
-                setDbStatus({
-                  loaded: true,
-                  count,
-                  source: COLLEGES_SOURCE
-                });
-              }
-            });
+            if (profile.exam) {
+              loadRealCollegesForExam(profile.exam, profile.stream || 'MPC', 2025).then(count => {
+                if (count > 0) {
+                  setDbStatus({
+                    loaded: true,
+                    count,
+                    source: COLLEGES_SOURCE
+                  });
+                }
+              });
+            }
           }}
         />
       </React.Suspense>

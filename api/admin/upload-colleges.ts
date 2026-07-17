@@ -3,6 +3,7 @@ import { getAuth } from "firebase-admin/auth";
 import fs from "fs";
 import path from "path";
 import { getFirestoreDb, setCachedColleges, setFirestoreUnavailable } from "../_lib/index";
+import { generateStaticData } from "../../scripts/generate-static-data";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") {
@@ -36,16 +37,52 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ error: "Invalid data format. Expected a JSON array of college-branch entries." });
     }
 
-    // Attempt to write backup colleges_2024.json file if writable (e.g. in local development)
-    try {
-      const jsonPath = path.join(process.cwd(), "colleges_2024.json");
-      fs.writeFileSync(jsonPath, JSON.stringify(data, null, 2), "utf8");
-      console.log(`Successfully backup-wrote colleges_2024.json locally with ${data.length} entries.`);
-    } catch (writeErr: any) {
-      console.log("Local filesystem is read-only or unwritable. Bypassing local JSON backup writing.");
+    const examParam = (req.query.exam as string) || "";
+    const yearParam = req.query.year ? Number(req.query.year) : 2025;
+
+    // A. Identify unique exam+year combinations in the uploaded dataset to delete stale records
+    const combinations = new Set<string>();
+    for (const entry of data) {
+      let entryExam = entry.exam || examParam;
+      if (entryExam === "AP_EAPCET") {
+        const br = (entry.branch || entry.branch_code || "").toUpperCase();
+        const isBiPCBranch = br.includes("PHARM") || br.includes("AGRI") || br.includes("BIOTECH") || br.includes("FOOD") || br.includes("HORTI") || br.includes("VET");
+        entryExam = isBiPCBranch ? "AP_EAPCET_BIPC" : "AP_EAPCET_MPC";
+      } else if (entryExam === "TS_EAMCET") {
+        const br = (entry.branch || entry.branch_code || "").toUpperCase();
+        const isBiPCBranch = br.includes("PHARM") || br.includes("AGRI") || br.includes("BIOTECH") || br.includes("FOOD") || br.includes("HORTI") || br.includes("VET");
+        entryExam = isBiPCBranch ? "TS_EAPCET_BIPC" : "TS_EAMCET";
+      } else if (!entryExam) {
+        entryExam = "AP_EAPCET_MPC";
+      }
+      const entryYear = entry.year ? Number(entry.year) : yearParam;
+      combinations.add(`${entryExam}|${entryYear}`);
     }
 
-    // Upload directly to Firestore in batches of 500
+    // B. Clear existing documents in "colleges" collection matching the uploaded groups to prevent duplication
+    for (const comb of combinations) {
+      const [combExam, combYearStr] = comb.split("|");
+      const combYear = Number(combYearStr);
+      console.log(`Clearing stale database entries in "colleges" for ${combExam} (${combYear})...`);
+      try {
+        const existingSnapshot = await db.collection("colleges")
+          .where("exam", "==", combExam)
+          .where("year", "==", combYear)
+          .get();
+        if (!existingSnapshot.empty) {
+          const deleteBatch = db.batch();
+          existingSnapshot.forEach((doc: any) => {
+            deleteBatch.delete(doc.ref);
+          });
+          await deleteBatch.commit();
+          console.log(`Cleared ${existingSnapshot.size} stale database records.`);
+        }
+      } catch (clearErr: any) {
+        console.warn(`Non-blocking error during collection cleaning:`, clearErr.message);
+      }
+    }
+
+    // C. Upload directly to Firestore "colleges" collection in batches of 500
     let successCount = 0;
     let failCount = 0;
     const batchSize = 500;
@@ -54,8 +91,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     for (let i = 0; i < data.length; i++) {
       const entry = data[i];
-      const docRef = db.collection('colleges_2024').doc();
-      batch.set(docRef, entry);
+      let entryExam = entry.exam || examParam;
+      if (entryExam === "AP_EAPCET") {
+        const br = (entry.branch || entry.branch_code || "").toUpperCase();
+        const isBiPCBranch = br.includes("PHARM") || br.includes("AGRI") || br.includes("BIOTECH") || br.includes("FOOD") || br.includes("HORTI") || br.includes("VET");
+        entryExam = isBiPCBranch ? "AP_EAPCET_BIPC" : "AP_EAPCET_MPC";
+      } else if (entryExam === "TS_EAMCET") {
+        const br = (entry.branch || entry.branch_code || "").toUpperCase();
+        const isBiPCBranch = br.includes("PHARM") || br.includes("AGRI") || br.includes("BIOTECH") || br.includes("FOOD") || br.includes("HORTI") || br.includes("VET");
+        entryExam = isBiPCBranch ? "TS_EAPCET_BIPC" : "TS_EAMCET";
+      } else if (!entryExam) {
+        entryExam = "AP_EAPCET_MPC";
+      }
+      const entryYear = entry.year ? Number(entry.year) : yearParam;
+
+      // Prepare college entry
+      const preparedEntry = {
+        ...entry,
+        exam: entryExam,
+        year: entryYear
+      };
+
+      const docRef = db.collection('colleges').doc();
+      batch.set(docRef, preparedEntry);
       currentBatchSize++;
 
       if (currentBatchSize === batchSize || i === data.length - 1) {
@@ -73,13 +131,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
-    // Invalidate caches
+    // D. Invalidate dynamic response cache
     setCachedColleges(null);
     setFirestoreUnavailable(false);
 
+    // E. Automatically regenerate the static JSON files (Requirement 7)
+    let staticRegenMsg = "";
+    try {
+      await generateStaticData();
+      staticRegenMsg = "Static data JSON files were successfully regenerated inside /public/data/ on the local filesystem. Note: A Vercel deployment redeploy is required to make these newly generated static JSON files permanently public on the production server.";
+      console.log("Static files regenerated successfully following admin upload.");
+    } catch (staticErr: any) {
+      staticRegenMsg = `Local static JSON regeneration bypassed or failed: ${staticErr.message}. A Vercel build/redeploy is required to build the latest files.`;
+      console.warn("Failed to regenerate static files following upload:", staticErr.message);
+    }
+
     return res.json({ 
       message: "Successfully uploaded to Firebase", 
-      details: `Successfully uploaded: ${successCount} documents. Failed to upload: ${failCount} documents.`, 
+      details: `Successfully uploaded: ${successCount} documents to "colleges" Firestore collection. Failed to upload: ${failCount} documents. ${staticRegenMsg}`, 
       count: data.length 
     });
 

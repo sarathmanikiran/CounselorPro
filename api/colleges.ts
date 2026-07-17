@@ -3,9 +3,6 @@ import fs from "fs";
 import path from "path";
 import { 
   getFirestoreDb, 
-  mapRawToCollege, 
-  cachedCollegesResponse, 
-  setCachedColleges, 
   firestoreUnavailable, 
   setFirestoreUnavailable 
 } from "./_lib/index";
@@ -15,80 +12,80 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: "Method not allowed. Use GET." });
   }
 
-  try {
-    // If cached response exists, return it immediately
-    if (cachedCollegesResponse) {
-      return res.json(cachedCollegesResponse);
-    }
+  const examParam = req.query.exam as string; // e.g. "AP_EAPCET_MPC"
+  const yearParam = req.query.year ? Number(req.query.year) : 2025; // e.g. 2025
 
-    let rawColleges: any[] = [];
-    let rawTsColleges: any[] = [];
+  try {
+    let colleges: any[] = [];
     let source = "Memory fallback";
 
-    const firestoreDb = getFirestoreDb();
+    // A. First try to load from the static JSON file directly (very fast local fallback)
+    if (examParam) {
+      try {
+        const staticFilename = `${examParam}_${yearParam}.json`;
+        const staticPath = path.join(process.cwd(), "public", "data", staticFilename);
+        if (fs.existsSync(staticPath)) {
+          const fileContent = fs.readFileSync(staticPath, "utf8");
+          colleges = JSON.parse(fileContent);
+          source = `Local Static JSON Fallback (${staticFilename})`;
+          console.log(`API served ${colleges.length} colleges from static JSON fallback: ${staticFilename}`);
+          return res.json({ colleges, source, count: colleges.length });
+        }
+      } catch (staticErr: any) {
+        console.warn("Failed to serve colleges from static file:", staticErr.message);
+      }
+    }
 
-    // A. Attempt Firestore
+    // B. Attempt Firestore Query (Requirement 2 & 6)
+    const firestoreDb = getFirestoreDb();
     if (firestoreDb && !firestoreUnavailable) {
       try {
-        const snapshot = await firestoreDb.collection("colleges_2024").limit(2000).get();
+        let query = firestoreDb.collection("colleges");
+        if (examParam) {
+          query = query.where("exam", "==", examParam);
+        }
+        if (yearParam) {
+          query = query.where("year", "==", yearParam);
+        }
+        
+        const snapshot = await query.limit(3000).get();
         if (!snapshot.empty) {
           snapshot.forEach((doc: any) => {
-            const data = doc.data();
-            if (data.exam === "TS_EAMCET") {
-              rawTsColleges.push(data);
-            } else {
-              rawColleges.push(data);
-            }
+            colleges.push(doc.data());
           });
-          source = "Firebase Firestore";
-          console.log(`Successfully fetched ${rawColleges.length} AP and ${rawTsColleges.length} TS entries from Firebase.`);
+          source = `Firebase Firestore ("colleges" collection)`;
+          console.log(`API fetched ${colleges.length} entries matching exam=${examParam}, year=${yearParam} from Firestore.`);
+          return res.json({ colleges, source, count: colleges.length });
         }
       } catch (firestoreErr: any) {
         setFirestoreUnavailable(true);
-        console.log("Firestore temporarily offline or quota limited, switching to local JSON.");
+        console.log("Firestore temporarily offline, falling back to all-colleges files.", firestoreErr.message);
       }
     }
 
-    // B. Fallback to local JSON
-    if (rawColleges.length === 0) {
-      const jsonPath = path.join(process.cwd(), "colleges_2024.json");
-      if (fs.existsSync(jsonPath)) {
-        const fileContent = fs.readFileSync(jsonPath, "utf8");
-        rawColleges = JSON.parse(fileContent);
-        source = "Local JSON fallback (colleges_2024.json)";
-        console.log(`Loaded ${rawColleges.length} entries from local JSON.`);
+    // C. Ultimate fallback: if everything else failed, try to combine local seed files
+    if (colleges.length === 0) {
+      const apMpcPath = path.join(process.cwd(), "colleges_2024.json");
+      const tsMpcPath = path.join(process.cwd(), "ts_colleges_2024.json");
+      
+      let allFallback: any[] = [];
+      if (fs.existsSync(apMpcPath)) {
+        allFallback = [...allFallback, ...JSON.parse(fs.readFileSync(apMpcPath, "utf8"))];
       }
+      if (fs.existsSync(tsMpcPath)) {
+        allFallback = [...allFallback, ...JSON.parse(fs.readFileSync(tsMpcPath, "utf8"))];
+      }
+
+      // Filter in memory if possible
+      colleges = allFallback;
+      source = "Local seed file fallback combination";
     }
 
-    if (rawTsColleges.length === 0) {
-      const tsJsonPath = path.join(process.cwd(), "ts_colleges_2024.json");
-      if (fs.existsSync(tsJsonPath)) {
-        const fileContent = fs.readFileSync(tsJsonPath, "utf8");
-        rawTsColleges = JSON.parse(fileContent);
-        if (source.includes("Local JSON fallback")) {
-          source = "Local JSON fallback (AP + TS)";
-        } else {
-          source += " + Local TS JSON";
-        }
-        console.log(`Loaded ${rawTsColleges.length} TS entries from local JSON.`);
-      }
-    }
-
-    // Map raw colleges to expected client schema
-    const mappedColleges = rawColleges.map((col, idx) => mapRawToCollege(col, idx, "AP_EAPCET"));
-    const mappedTsColleges = rawTsColleges.map((col, idx) => mapRawToCollege(col, idx + mappedColleges.length, "TS_EAMCET"));
-    const combined = [...mappedColleges, ...mappedTsColleges];
-
-    const finalResponse = {
-      colleges: combined,
+    return res.json({
+      colleges,
       source,
-      count: combined.length
-    };
-
-    // Populate local function state cache
-    setCachedColleges(finalResponse);
-
-    return res.json(finalResponse);
+      count: colleges.length
+    });
   } catch (err: any) {
     console.log("Colleges retrieval serverless API bypassed gracefully:", err.message);
     return res.json({

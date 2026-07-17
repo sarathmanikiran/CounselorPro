@@ -9,6 +9,7 @@ import { initializeApp, cert, getApps, getApp } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 import { getAuth } from "firebase-admin/auth";
 import compression from "compression";
+import { generateStaticData } from "./scripts/generate-static-data";
 
 dotenv.config();
 
@@ -134,177 +135,81 @@ let firestoreUnavailable = false;
 
 // 1.1 API: Retrieve colleges list from Firestore with file fallback
 app.get("/api/colleges", async (req, res) => {
-  try {
-    // If we have a cached response, return it immediately to avoid hitting Firestore
-    if (cachedCollegesResponse) {
-      return res.json(cachedCollegesResponse);
-    }
+  const examParam = req.query.exam as string; // e.g. "AP_EAPCET_MPC"
+  const yearParam = req.query.year ? Number(req.query.year) : 2025; // e.g. 2025
 
-    let rawColleges: any[] = [];
+  try {
+    let colleges: any[] = [];
     let source = "Memory fallback";
 
-    // A. Attempt to read from Firestore if available and not previously flagged as unavailable
+    // A. First try to load from the static JSON file directly (very fast local fallback)
+    if (examParam) {
+      try {
+        const staticFilename = `${examParam}_${yearParam}.json`;
+        const staticPath = path.join(process.cwd(), "public", "data", staticFilename);
+        if (fs.existsSync(staticPath)) {
+          const fileContent = fs.readFileSync(staticPath, "utf8");
+          colleges = JSON.parse(fileContent);
+          source = `Local Static JSON Fallback (${staticFilename})`;
+          console.log(`Express API served ${colleges.length} colleges from static JSON fallback: ${staticFilename}`);
+          return res.json({ colleges, source, count: colleges.length });
+        }
+      } catch (staticErr: any) {
+        console.warn("Failed to serve colleges from static file:", staticErr.message);
+      }
+    }
+
+    // B. Attempt Firestore Query (Requirement 2 & 6)
     if (firestoreDb && !firestoreUnavailable) {
       try {
-        const snapshot = await firestoreDb.collection("colleges_2024").limit(2000).get();
+        let query = firestoreDb.collection("colleges");
+        if (examParam) {
+          query = query.where("exam", "==", examParam);
+        }
+        if (yearParam) {
+          query = query.where("year", "==", yearParam);
+        }
+        
+        const snapshot = await query.limit(3000).get();
         if (!snapshot.empty) {
           snapshot.forEach((doc: any) => {
-            rawColleges.push(doc.data());
+            colleges.push(doc.data());
           });
-          source = "Firebase Firestore";
-          console.log(`Successfully fetched ${rawColleges.length} entries from Firebase.`);
+          source = `Firebase Firestore ("colleges" collection)`;
+          console.log(`Express API fetched ${colleges.length} entries matching exam=${examParam}, year=${yearParam} from Firestore.`);
+          return res.json({ colleges, source, count: colleges.length });
         }
       } catch (firestoreErr: any) {
-        // Flag Firestore as unavailable to prevent subsequent heavy requests
         firestoreUnavailable = true;
-        // Log gracefully to avoid triggering automated error parsers
-        console.log("Firestore temporarily offline or quota limited, switching to local JSON.");
+        console.log("Firestore temporarily offline, falling back to all-colleges files.", firestoreErr.message);
       }
     }
 
-    // B. Fallback to local JSON if Firestore was empty or failed
-    if (rawColleges.length === 0) {
-      const jsonPath = path.resolve("colleges_2024.json");
-      if (fs.existsSync(jsonPath)) {
-        const fileContent = fs.readFileSync(jsonPath, "utf8");
-        rawColleges = JSON.parse(fileContent);
-        source = "Local JSON fallback (colleges_2024.json)";
-        console.log(`Loaded ${rawColleges.length} entries from local JSON.`);
+    // C. Ultimate fallback: if everything else failed, try to combine local seed files
+    if (colleges.length === 0) {
+      const apMpcPath = path.join(process.cwd(), "colleges_2024.json");
+      const tsMpcPath = path.join(process.cwd(), "ts_colleges_2024.json");
+      
+      let allFallback: any[] = [];
+      if (fs.existsSync(apMpcPath)) {
+        allFallback = [...allFallback, ...JSON.parse(fs.readFileSync(apMpcPath, "utf8"))];
       }
+      if (fs.existsSync(tsMpcPath)) {
+        allFallback = [...allFallback, ...JSON.parse(fs.readFileSync(tsMpcPath, "utf8"))];
+      }
+
+      colleges = allFallback.map((col, idx) => mapRawToCollege(col, idx, examParam || "AP_EAPCET_MPC"));
+      source = "Local seed file fallback combination";
     }
 
-    // Map raw colleges to expected client schema
-    const mappedColleges = rawColleges.map((col, idx) => mapRawToCollege(col, idx, "AP_EAPCET"));
-
-    // Combine with some high-quality static TS_EAMCET options for full support
-    const tsColleges = [
-      {
-        id: "ts-cbit-cse",
-        code: "CBIT",
-        name: "Chaitanya Bharathi Institute of Technology",
-        branch: "CSE",
-        district: "Hyderabad",
-        type: "Private-Autonomous",
-        fee: 140000,
-        cutoffOC: 1200,
-        cutoffBC: 3500,
-        cutoffSCST: 8000,
-        region: "OU",
-        exam: "TS_EAMCET"
-      },
-      {
-        id: "ts-cbit-ece",
-        code: "CBIT",
-        name: "Chaitanya Bharathi Institute of Technology",
-        branch: "ECE",
-        district: "Hyderabad",
-        type: "Private-Autonomous",
-        fee: 140000,
-        cutoffOC: 3100,
-        cutoffBC: 6200,
-        cutoffSCST: 15000,
-        region: "OU",
-        exam: "TS_EAMCET"
-      },
-      {
-        id: "ts-vnr-cse",
-        code: "VNRV",
-        name: "VNR Vignana Jyothi Institute of Engineering & Technology",
-        branch: "CSE",
-        district: "Hyderabad",
-        type: "Private-Autonomous",
-        fee: 135000,
-        cutoffOC: 1500,
-        cutoffBC: 4200,
-        cutoffSCST: 11000,
-        region: "OU",
-        exam: "TS_EAMCET"
-      },
-      {
-        id: "ts-jntuh-cse",
-        code: "JNTH",
-        name: "JNTU College of Engineering, Hyderabad",
-        branch: "CSE",
-        district: "Hyderabad",
-        type: "Govt",
-        fee: 35000,
-        cutoffOC: 800,
-        cutoffBC: 2100,
-        cutoffSCST: 5500,
-        region: "OU",
-        exam: "TS_EAMCET"
-      },
-      {
-        id: "ts-ouce-cse",
-        code: "OUCE",
-        name: "University College of Engineering, Osmania University",
-        branch: "CSE",
-        district: "Hyderabad",
-        type: "Govt",
-        fee: 35000,
-        cutoffOC: 900,
-        cutoffBC: 2400,
-        cutoffSCST: 5800,
-        region: "OU",
-        exam: "TS_EAMCET"
-      },
-      {
-        id: "ts-vasavi-cse",
-        code: "VASV",
-        name: "Vasavi College of Engineering",
-        branch: "CSE",
-        district: "Hyderabad",
-        type: "Private-Autonomous",
-        fee: 130000,
-        cutoffOC: 1800,
-        cutoffBC: 4800,
-        cutoffSCST: 12000,
-        region: "OU",
-        exam: "TS_EAMCET"
-      },
-      {
-        id: "ts-griet-cse",
-        code: "GRRR",
-        name: "Gokaraju Rangaraju Institute of Engineering & Technology",
-        branch: "CSE",
-        district: "Rangareddy",
-        type: "Private-Autonomous",
-        fee: 122000,
-        cutoffOC: 4200,
-        cutoffBC: 8900,
-        cutoffSCST: 19000,
-        region: "OU",
-        exam: "TS_EAMCET"
-      },
-      {
-        id: "ts-kmit-cse",
-        code: "KMIT",
-        name: "Keshav Memorial Institute of Technology",
-        branch: "CSE",
-        district: "Hyderabad",
-        type: "Private-Autonomous",
-        fee: 105000,
-        cutoffOC: 3500,
-        cutoffBC: 7800,
-        cutoffSCST: 16500,
-        region: "OU",
-        exam: "TS_EAMCET"
-      }
-    ];
-
-    const combined = [...mappedColleges, ...tsColleges];
-
-    // Populate the cache
-    cachedCollegesResponse = {
-      colleges: combined,
+    return res.json({
+      colleges,
       source,
-      count: combined.length
-    };
-
-    res.json(cachedCollegesResponse);
+      count: colleges.length
+    });
   } catch (err: any) {
     console.log("Colleges retrieval API bypassed gracefully:", err.message);
-    res.json({
+    return res.json({
       colleges: [],
       source: "Emergency empty fallback",
       count: 0
@@ -460,12 +365,12 @@ app.post("/api/admin/upload-colleges", async (req, res) => {
     }
 
     const idToken = authHeader.substring(7);
-    const serviceAccount = getServiceAccount();
-    if (!serviceAccount) {
+
+    if (!firestoreDb) {
       return res.status(500).json({ error: "Server Error: Firebase environment variables are not configured on this server." });
     }
 
-    // Verify the Firebase ID Token using firebase-admin
+    // Verify the Firebase ID Token using firebase-admin Auth
     const decodedToken = await getAuth().verifyIdToken(idToken);
     const email = decodedToken.email || "";
 
@@ -478,46 +383,120 @@ app.post("/api/admin/upload-colleges", async (req, res) => {
       return res.status(400).json({ error: "Invalid data format. Expected a JSON array of college-branch entries." });
     }
 
-    const keyPath = path.resolve("serviceAccountKey.json");
-    const jsonPath = path.resolve("colleges_2024.json");
+    const examParam = (req.query.exam as string) || "";
+    const yearParam = req.query.year ? Number(req.query.year) : 2025;
 
-    try {
-      // Write credentials and input data securely on the server
-      fs.writeFileSync(keyPath, JSON.stringify(serviceAccount, null, 2), "utf8");
-      fs.writeFileSync(jsonPath, JSON.stringify(data, null, 2), "utf8");
-      console.log(`Created temp serviceAccountKey.json and colleges_2024.json of size ${data.length} entries.`);
-
-      // Run the upload_admin.ts script using npx tsx
-      exec("npx tsx upload_admin.ts", (error, stdout, stderr) => {
-        // Clean up the private credentials file immediately
-        if (fs.existsSync(keyPath)) {
-          fs.unlinkSync(keyPath);
-        }
-
-        if (error) {
-          console.error("Upload process error:", stderr);
-          return res.status(500).json({ error: "Firestore upload script failed", details: stderr });
-        }
-
-        console.log("Upload script executed successfully:\n", stdout);
-        // Invalidate the cache to ensure new data is loaded next time
-        cachedCollegesResponse = null;
-        firestoreUnavailable = false;
-
-        return res.json({ 
-          message: "Successfully uploaded to Firebase", 
-          details: stdout, 
-          count: data.length 
-        });
-      });
-
-    } catch (writeErr: any) {
-      if (fs.existsSync(keyPath)) {
-        fs.unlinkSync(keyPath);
+    // A. Identify unique exam+year combinations in the uploaded dataset to delete stale records
+    const combinations = new Set<string>();
+    for (const entry of data) {
+      let entryExam = entry.exam || examParam;
+      if (entryExam === "AP_EAPCET") {
+        const br = (entry.branch || entry.branch_code || "").toUpperCase();
+        const isBiPCBranch = br.includes("PHARM") || br.includes("AGRI") || br.includes("BIOTECH") || br.includes("FOOD") || br.includes("HORTI") || br.includes("VET");
+        entryExam = isBiPCBranch ? "AP_EAPCET_BIPC" : "AP_EAPCET_MPC";
+      } else if (entryExam === "TS_EAMCET") {
+        const br = (entry.branch || entry.branch_code || "").toUpperCase();
+        const isBiPCBranch = br.includes("PHARM") || br.includes("AGRI") || br.includes("BIOTECH") || br.includes("FOOD") || br.includes("HORTI") || br.includes("VET");
+        entryExam = isBiPCBranch ? "TS_EAPCET_BIPC" : "TS_EAMCET";
+      } else if (!entryExam) {
+        entryExam = "AP_EAPCET_MPC";
       }
-      console.error("Endpoint execution error writing temp files:", writeErr);
-      return res.status(500).json({ error: "Internal server execution failure", details: writeErr.message });
+      const entryYear = entry.year ? Number(entry.year) : yearParam;
+      combinations.add(`${entryExam}|${entryYear}`);
     }
+
+    // B. Clear existing documents in "colleges" collection matching the uploaded groups to prevent duplication
+    for (const comb of combinations) {
+      const [combExam, combYearStr] = comb.split("|");
+      const combYear = Number(combYearStr);
+      console.log(`Clearing stale database entries in "colleges" for ${combExam} (${combYear})...`);
+      try {
+        const existingSnapshot = await firestoreDb.collection("colleges")
+          .where("exam", "==", combExam)
+          .where("year", "==", combYear)
+          .get();
+        if (!existingSnapshot.empty) {
+          const deleteBatch = firestoreDb.batch();
+          existingSnapshot.forEach((doc: any) => {
+            deleteBatch.delete(doc.ref);
+          });
+          await deleteBatch.commit();
+          console.log(`Cleared ${existingSnapshot.size} stale database records.`);
+        }
+      } catch (clearErr: any) {
+        console.warn(`Non-blocking error during collection cleaning:`, clearErr.message);
+      }
+    }
+
+    // C. Upload directly to Firestore "colleges" collection in batches of 500
+    let successCount = 0;
+    let failCount = 0;
+    const batchSize = 500;
+    let batch = firestoreDb.batch();
+    let currentBatchSize = 0;
+
+    for (let i = 0; i < data.length; i++) {
+      const entry = data[i];
+      let entryExam = entry.exam || examParam;
+      if (entryExam === "AP_EAPCET") {
+        const br = (entry.branch || entry.branch_code || "").toUpperCase();
+        const isBiPCBranch = br.includes("PHARM") || br.includes("AGRI") || br.includes("BIOTECH") || br.includes("FOOD") || br.includes("HORTI") || br.includes("VET");
+        entryExam = isBiPCBranch ? "AP_EAPCET_BIPC" : "AP_EAPCET_MPC";
+      } else if (entryExam === "TS_EAMCET") {
+        const br = (entry.branch || entry.branch_code || "").toUpperCase();
+        const isBiPCBranch = br.includes("PHARM") || br.includes("AGRI") || br.includes("BIOTECH") || br.includes("FOOD") || br.includes("HORTI") || br.includes("VET");
+        entryExam = isBiPCBranch ? "TS_EAPCET_BIPC" : "TS_EAMCET";
+      } else if (!entryExam) {
+        entryExam = "AP_EAPCET_MPC";
+      }
+      const entryYear = entry.year ? Number(entry.year) : yearParam;
+
+      // Prepare college entry
+      const preparedEntry = {
+        ...entry,
+        exam: entryExam,
+        year: entryYear
+      };
+
+      const docRef = firestoreDb.collection('colleges').doc();
+      batch.set(docRef, preparedEntry);
+      currentBatchSize++;
+
+      if (currentBatchSize === batchSize || i === data.length - 1) {
+        try {
+          await batch.commit();
+          successCount += currentBatchSize;
+          batch = firestoreDb.batch();
+          currentBatchSize = 0;
+        } catch (error: any) {
+          console.error(`Failed to commit batch:`, error);
+          failCount += currentBatchSize;
+          batch = firestoreDb.batch();
+          currentBatchSize = 0;
+        }
+      }
+    }
+
+    // D. Invalidate dynamic response cache and offline indicators
+    cachedCollegesResponse = null;
+    firestoreUnavailable = false;
+
+    // E. Automatically regenerate the static JSON files on upload
+    let staticRegenMsg = "";
+    try {
+      await generateStaticData();
+      staticRegenMsg = "Static data JSON files were successfully regenerated inside /public/data/ on the local filesystem.";
+      console.log("Static files regenerated successfully following admin upload.");
+    } catch (staticErr: any) {
+      staticRegenMsg = `Local static JSON regeneration bypassed or failed: ${staticErr.message}`;
+      console.warn("Failed to regenerate static files following upload:", staticErr.message);
+    }
+
+    return res.json({ 
+      message: "Successfully uploaded to Firebase", 
+      details: `Successfully uploaded: ${successCount} documents to "colleges" Firestore collection. Failed to upload: ${failCount} documents. ${staticRegenMsg}`, 
+      count: data.length 
+    });
 
   } catch (authErr: any) {
     console.error("Authentication or authorization failed:", authErr.message);
