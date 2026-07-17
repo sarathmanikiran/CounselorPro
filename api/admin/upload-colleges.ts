@@ -5,6 +5,8 @@ import path from "path";
 import { getFirestoreDb, setCachedColleges, setFirestoreUnavailable } from "../_lib/index";
 import { generateStaticData } from "../../scripts/generate-static-data";
 
+export const config = { maxDuration: 60 };
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed. Use POST." });
@@ -40,6 +42,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const examParam = (req.query.exam as string) || "";
     const yearParam = req.query.year ? Number(req.query.year) : 2025;
+    const chunkIndex = req.query.chunkIndex !== undefined ? Number(req.query.chunkIndex) : 0;
+    const isLastChunk = req.query.isLastChunk !== undefined ? req.query.isLastChunk === "true" : true;
 
     // A. Identify unique exam+year combinations in the uploaded dataset to delete stale records
     const combinations = new Set<string>();
@@ -60,91 +64,103 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       combinations.add(`${entryExam}|${entryYear}`);
     }
 
-    // B. Clear existing documents in "colleges" collection matching the uploaded groups to prevent duplication
-    for (const comb of combinations) {
-      const [combExam, combYearStr] = comb.split("|");
-      const combYear = Number(combYearStr);
-      console.log(`Clearing stale database entries in "colleges" for ${combExam} (${combYear})...`);
-      try {
-        const existingSnapshot = await db.collection("colleges")
-          .where("exam", "==", combExam)
-          .where("year", "==", combYear)
-          .get();
-        if (!existingSnapshot.empty) {
-          const deleteBatch = db.batch();
-          existingSnapshot.forEach((doc: any) => {
-            deleteBatch.delete(doc.ref);
-          });
-          await deleteBatch.commit();
-          console.log(`Cleared ${existingSnapshot.size} stale database records.`);
+    // B. Clear existing documents ONLY on the first chunk of the upload series (chunkIndex === 0)
+    if (chunkIndex === 0) {
+      for (const comb of combinations) {
+        const [combExam, combYearStr] = comb.split("|");
+        const combYear = Number(combYearStr);
+        console.log(`Clearing stale database entries in "colleges" for ${combExam} (${combYear})...`);
+        try {
+          const existingSnapshot = await db.collection("colleges")
+            .where("exam", "==", combExam)
+            .where("year", "==", combYear)
+            .get();
+          if (!existingSnapshot.empty) {
+            const docs = existingSnapshot.docs;
+            const deletePromises = [];
+            // Chunk deletions in groups of 400 for safety under Firestore 500 batch limit
+            for (let j = 0; j < docs.length; j += 400) {
+              const chunk = docs.slice(j, j + 400);
+              const deleteBatch = db.batch();
+              chunk.forEach((doc: any) => {
+                deleteBatch.delete(doc.ref);
+              });
+              deletePromises.push(deleteBatch.commit());
+            }
+            await Promise.all(deletePromises);
+            console.log(`Cleared ${existingSnapshot.size} stale database records in ${deletePromises.length} batches.`);
+          }
+        } catch (clearErr: any) {
+          console.warn(`Non-blocking error during collection cleaning:`, clearErr.message);
         }
-      } catch (clearErr: any) {
-        console.warn(`Non-blocking error during collection cleaning:`, clearErr.message);
       }
+    } else {
+      console.log(`Skipping collection cleanup since chunkIndex is ${chunkIndex}.`);
     }
 
-    // C. Upload directly to Firestore "colleges" collection in batches of 500
+    // C. Upload directly to Firestore "colleges" collection in parallelized batches of 400
     let successCount = 0;
     let failCount = 0;
-    const batchSize = 500;
-    let batch = db.batch();
-    let currentBatchSize = 0;
+    const batchSize = 400;
+    const writePromises = [];
 
-    for (let i = 0; i < data.length; i++) {
-      const entry = data[i];
-      let entryExam = entry.exam || examParam;
-      if (entryExam === "AP_EAPCET") {
-        const br = (entry.branch || entry.branch_code || "").toUpperCase();
-        const isBiPCBranch = br.includes("PHARM") || br.includes("AGRI") || br.includes("BIOTECH") || br.includes("FOOD") || br.includes("HORTI") || br.includes("VET");
-        entryExam = isBiPCBranch ? "AP_EAPCET_BIPC" : "AP_EAPCET_MPC";
-      } else if (entryExam === "TS_EAMCET") {
-        const br = (entry.branch || entry.branch_code || "").toUpperCase();
-        const isBiPCBranch = br.includes("PHARM") || br.includes("AGRI") || br.includes("BIOTECH") || br.includes("FOOD") || br.includes("HORTI") || br.includes("VET");
-        entryExam = isBiPCBranch ? "TS_EAPCET_BIPC" : "TS_EAMCET";
-      } else if (!entryExam) {
-        entryExam = "AP_EAPCET_MPC";
-      }
-      const entryYear = entry.year ? Number(entry.year) : yearParam;
+    for (let i = 0; i < data.length; i += batchSize) {
+      const chunk = data.slice(i, i + batchSize);
+      const writeBatch = db.batch();
 
-      // Prepare college entry
-      const preparedEntry = {
-        ...entry,
-        exam: entryExam,
-        year: entryYear
-      };
-
-      const docRef = db.collection('colleges').doc();
-      batch.set(docRef, preparedEntry);
-      currentBatchSize++;
-
-      if (currentBatchSize === batchSize || i === data.length - 1) {
-        try {
-          await batch.commit();
-          successCount += currentBatchSize;
-          batch = db.batch();
-          currentBatchSize = 0;
-        } catch (error: any) {
-          console.error(`Failed to commit batch:`, error);
-          failCount += currentBatchSize;
-          batch = db.batch();
-          currentBatchSize = 0;
+      for (const entry of chunk) {
+        let entryExam = entry.exam || examParam;
+        if (entryExam === "AP_EAPCET") {
+          const br = (entry.branch || entry.branch_code || "").toUpperCase();
+          const isBiPCBranch = br.includes("PHARM") || br.includes("AGRI") || br.includes("BIOTECH") || br.includes("FOOD") || br.includes("HORTI") || br.includes("VET");
+          entryExam = isBiPCBranch ? "AP_EAPCET_BIPC" : "AP_EAPCET_MPC";
+        } else if (entryExam === "TS_EAMCET") {
+          const br = (entry.branch || entry.branch_code || "").toUpperCase();
+          const isBiPCBranch = br.includes("PHARM") || br.includes("AGRI") || br.includes("BIOTECH") || br.includes("FOOD") || br.includes("HORTI") || br.includes("VET");
+          entryExam = isBiPCBranch ? "TS_EAPCET_BIPC" : "TS_EAMCET";
+        } else if (!entryExam) {
+          entryExam = "AP_EAPCET_MPC";
         }
+        const entryYear = entry.year ? Number(entry.year) : yearParam;
+
+        const preparedEntry = {
+          ...entry,
+          exam: entryExam,
+          year: entryYear
+        };
+
+        const docRef = db.collection('colleges').doc();
+        writeBatch.set(docRef, preparedEntry);
       }
+
+      const p = writeBatch.commit().then(() => {
+        successCount += chunk.length;
+      }).catch((error: any) => {
+        console.error(`Failed to commit write batch:`, error);
+        failCount += chunk.length;
+      });
+      writePromises.push(p);
     }
+
+    await Promise.all(writePromises);
 
     // D. Invalidate dynamic response cache
     setCachedColleges(null);
     setFirestoreUnavailable(false);
 
-    // E. Automatically regenerate the static JSON files (Requirement 7)
+    // E. Automatically regenerate the static JSON files ONLY on the very last chunk (isLastChunk === true)
     let staticRegenMsg = "";
-    try {
-      await generateStaticData();
-      staticRegenMsg = "Static data JSON files were successfully regenerated inside /public/data/ on the local filesystem. Note: A Vercel deployment redeploy is required to make these newly generated static JSON files permanently public on the production server.";
-      console.log("Static files regenerated successfully following admin upload.");
-    } catch (staticErr: any) {
-      staticRegenMsg = `Local static JSON regeneration bypassed or failed: ${staticErr.message}. A Vercel build/redeploy is required to build the latest files.`;
-      console.warn("Failed to regenerate static files following upload:", staticErr.message);
+    if (isLastChunk) {
+      try {
+        await generateStaticData();
+        staticRegenMsg = "Static data JSON files were successfully regenerated inside /public/data/ on the local filesystem. Note: A Vercel deployment redeploy is required to make these newly generated static JSON files permanently public on the production server.";
+        console.log("Static files regenerated successfully following admin upload (last chunk processed).");
+      } catch (staticErr: any) {
+        staticRegenMsg = `Local static JSON regeneration bypassed or failed: ${staticErr.message}. A Vercel build/redeploy is required to build the latest files.`;
+        console.warn("Failed to regenerate static files following upload:", staticErr.message);
+      }
+    } else {
+      staticRegenMsg = `Chunk ${chunkIndex + 1} uploaded successfully. Static JSON files will be regenerated after the last chunk is committed.`;
     }
 
     return res.json({ 

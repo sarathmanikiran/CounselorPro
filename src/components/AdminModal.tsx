@@ -179,27 +179,47 @@ export default function AdminModal({ isOpen, onClose, onUploadSuccess }: AdminMo
 
     setStatus('uploading');
     appendLog(`Initiating secure administrator pipeline...`);
-    appendLog(`Sending payload of ${parsedData.length.toLocaleString()} entries to backend...`);
+    appendLog(`Splitting dataset into chunks of 500 entries for safety...`);
+
+    const chunkSize = 500;
+    const totalChunks = Math.ceil(parsedData.length / chunkSize);
+    appendLog(`Total chunks to process: ${totalChunks}`);
 
     try {
-      const res = await fetch('/api/admin/upload-colleges', {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${idToken}`
-        },
-        body: JSON.stringify(parsedData)
-      });
+      for (let index = 0; index < totalChunks; index++) {
+        const start = index * chunkSize;
+        const end = Math.min(start + chunkSize, parsedData.length);
+        const chunk = parsedData.slice(start, end);
+        const isLast = index === totalChunks - 1;
 
-      const result = await res.json();
+        appendLog(`Uploading chunk ${index + 1} of ${totalChunks} (${chunk.length} entries)...`);
 
-      if (!res.ok) {
-        throw new Error(result.error || result.details || 'Server error occurred during Firestore write.');
+        const res = await fetch(`/api/admin/upload-colleges?chunkIndex=${index}&isLastChunk=${isLast}`, {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${idToken}`
+          },
+          body: JSON.stringify(chunk)
+        });
+
+        let result: any;
+        const responseText = await res.text();
+        try {
+          result = JSON.parse(responseText);
+        } catch (parseErr: any) {
+          throw new Error(`Failed to parse server response as JSON. Server might have timed out or crashed. Raw response (truncated): ${responseText.substring(0, 400)}${responseText.length > 400 ? '...' : ''}`);
+        }
+
+        if (!res.ok) {
+          throw new Error(result.error || result.details || `Server returned error status ${res.status} on chunk ${index + 1}.`);
+        }
+
+        appendLog(`Successfully uploaded chunk ${index + 1}/${totalChunks}: ${result.details || result.message}`);
       }
 
       setStatus('success');
-      appendLog(`Server response: ${result.message}`);
-      appendLog(`Successfully synchronized all ${parsedData.length.toLocaleString()} documents!`);
+      appendLog(`Successfully synchronized all ${parsedData.length.toLocaleString()} documents in ${totalChunks} sequential batches!`);
       if (onUploadSuccess) {
         onUploadSuccess();
       }
