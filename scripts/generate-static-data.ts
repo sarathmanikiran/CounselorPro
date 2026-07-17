@@ -276,8 +276,13 @@ export async function generateStaticData() {
   console.log("Static data generation complete!");
 }
 
-// Execute unconditionally
-generateStaticData().catch(err => {
-  console.error("FATAL: Failed to generate static data:", err);
-  process.exit(1);
-});
+// Execute only if run directly as a script (CLI) to prevent blocking/crashing when imported
+if (process.argv[1] && process.argv[1].includes("generate-static-data")) {
+  console.log("Running generateStaticData directly from CLI...");
+  generateStaticData().catch(err => {
+    console.error("FATAL: Failed to generate static data:", err);
+    process.exit(1);
+  });
+} else {
+  console.log("generate-static-data.ts imported by another module, bypassing automatic self-execution.");
+}
