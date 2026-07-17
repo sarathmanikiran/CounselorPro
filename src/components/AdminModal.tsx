@@ -10,7 +10,7 @@ interface AdminModalProps {
 }
 
 export default function AdminModal({ isOpen, onClose, onUploadSuccess }: AdminModalProps) {
-  const [adminEmail, setAdminEmail] = useState<string>(() => localStorage.getItem('admin_email') || '');
+  const [adminEmail, setAdminEmail] = useState<string>('');
   const [authError, setAuthError] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
 
@@ -27,16 +27,8 @@ export default function AdminModal({ isOpen, onClose, onUploadSuccess }: AdminMo
   const [firebaseApp, setFirebaseApp] = useState<any>(null);
   const [firebaseAuth, setFirebaseAuth] = useState<any>(null);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [idToken, setIdToken] = useState<string>(() => {
-    const savedEmail = localStorage.getItem('admin_email');
-    const savedPasskey = localStorage.getItem('admin_passkey');
-    if (savedEmail === 'sarathdasireddy369@gmail.com' && savedPasskey) {
-      return `PASSKEY:${savedPasskey}`;
-    }
-    return '';
-  });
+  const [idToken, setIdToken] = useState<string>('');
   const [isLoadingConfig, setIsLoadingConfig] = useState(true);
-  const [passcode, setPasscode] = useState('');
 
   // Load configuration and listen to authentication state
   useEffect(() => {
@@ -68,7 +60,6 @@ export default function AdminModal({ isOpen, onClose, onUploadSuccess }: AdminMo
                     setIdToken(token);
                     if (user.email) {
                       setAdminEmail(user.email);
-                      localStorage.setItem('admin_email', user.email);
                     }
                   } catch (tokenErr) {
                     console.error('Failed to get user ID token:', tokenErr);
@@ -76,6 +67,7 @@ export default function AdminModal({ isOpen, onClose, onUploadSuccess }: AdminMo
                 } else {
                   setCurrentUser(null);
                   setIdToken('');
+                  setAdminEmail('');
                 }
               });
 
@@ -242,7 +234,6 @@ export default function AdminModal({ isOpen, onClose, onUploadSuccess }: AdminMo
       if (user.email === 'sarathdasireddy369@gmail.com') {
         setIdToken(token);
         setAdminEmail(user.email);
-        localStorage.setItem('admin_email', user.email);
       } else {
         setAuthError(`Access Denied: '${user.email}' is not authorized. This administrator console is secured for sarathdasireddy369@gmail.com only.`);
         await signOut(firebaseAuth);
@@ -255,40 +246,7 @@ export default function AdminModal({ isOpen, onClose, onUploadSuccess }: AdminMo
     }
   };
 
-  const handlePasscodeSignIn = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!passcode.trim()) {
-      setAuthError('Please enter an administrator passcode.');
-      return;
-    }
-    setAuthError('');
-    setIsVerifying(true);
-    try {
-      const res = await fetch('/api/admin/verify-passcode', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ passcode: passcode.trim() })
-      });
-      const result = await res.json();
-      if (!res.ok) {
-        throw new Error(result.error || 'Passcode verification failed.');
-      }
-      
-      setIdToken(result.token);
-      setAdminEmail(result.email);
-      localStorage.setItem('admin_email', result.email);
-      localStorage.setItem('admin_passkey', passcode.trim());
-    } catch (err: any) {
-      console.error('Passcode Auth error:', err);
-      setAuthError(`Verification Error: ${err.message}`);
-    } finally {
-      setIsVerifying(false);
-    }
-  };
-
   const handleSignOutAdmin = async () => {
-    localStorage.removeItem('admin_email');
-    localStorage.removeItem('admin_passkey');
     setAdminEmail('');
     setIdToken('');
     resetPortal();
@@ -354,69 +312,25 @@ export default function AdminModal({ isOpen, onClose, onUploadSuccess }: AdminMo
                     </div>
                   )}
 
-                  {/* Passkey Authentication Form */}
-                  <form onSubmit={handlePasscodeSignIn} className="space-y-4 bg-slate-50 border border-slate-200 rounded-2xl p-5">
-                    <div className="space-y-1.5">
-                      <label htmlFor="admin-passcode" className="block text-xs font-bold text-slate-700 uppercase tracking-wider font-mono">
-                        Enter Admin Passkey
-                      </label>
-                      <div className="relative">
-                        <Key className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                        <input
-                          id="admin-passcode"
-                          type="password"
-                          placeholder="••••••••"
-                          value={passcode}
-                          onChange={(e) => setPasscode(e.target.value)}
-                          disabled={isVerifying}
-                          className="w-full pl-9 pr-4 py-2.5 bg-white border border-slate-300 rounded-xl text-sm focus:outline-hidden focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all font-mono"
-                        />
-                      </div>
-                      <p className="text-[10px] text-slate-400 leading-relaxed font-sans">
-                        Alternative login bypass for restricted environments (e.g. unauthorized auth domains).
-                      </p>
-                    </div>
+                  {firebaseConfig?.apiKey && firebaseConfig?.projectId ? (
                     <button
-                      type="submit"
+                      type="button"
+                      onClick={handleGoogleSignIn}
                       disabled={isVerifying}
-                      className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white font-bold rounded-xl text-xs tracking-wider uppercase font-mono shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-75 font-semibold"
+                      className="w-full py-3 px-4 bg-slate-900 hover:bg-slate-850 active:scale-[0.99] text-white font-bold rounded-xl text-xs tracking-wider uppercase font-mono shadow-sm transition-all flex items-center justify-center gap-2.5 cursor-pointer disabled:opacity-75"
                     >
                       {isVerifying ? (
-                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        <>
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                          <span>Verifying Session...</span>
+                        </>
                       ) : (
-                        <CheckCircle className="w-4 h-4" />
+                        <>
+                          <ShieldCheck className="w-4.5 h-4.5 text-emerald-400" />
+                          <span>Sign In with Google</span>
+                        </>
                       )}
-                      <span>Verify & Unlock</span>
                     </button>
-                  </form>
-
-                  {firebaseConfig?.apiKey && firebaseConfig?.projectId ? (
-                    <>
-                      <div className="relative flex py-2 items-center">
-                        <div className="flex-grow border-t border-slate-200"></div>
-                        <span className="flex-shrink mx-3 text-[10px] text-slate-400 uppercase tracking-wider font-mono">OR</span>
-                        <div className="flex-grow border-t border-slate-200"></div>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={handleGoogleSignIn}
-                        disabled={isVerifying}
-                        className="w-full py-3 px-4 bg-slate-900 hover:bg-slate-850 active:scale-[0.99] text-white font-bold rounded-xl text-xs tracking-wider uppercase font-mono shadow-sm transition-all flex items-center justify-center gap-2.5 cursor-pointer disabled:opacity-75"
-                      >
-                        {isVerifying ? (
-                          <>
-                            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                            <span>Verifying Session...</span>
-                          </>
-                        ) : (
-                          <>
-                            <ShieldCheck className="w-4.5 h-4.5 text-emerald-400" />
-                            <span>Sign In with Google</span>
-                          </>
-                        )}
-                      </button>
-                    </>
                   ) : (
                     <div className="p-3.5 bg-amber-50 border border-amber-100/60 rounded-xl flex gap-2.5 items-start text-[10px] text-amber-800 leading-relaxed font-sans">
                       <AlertCircle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />

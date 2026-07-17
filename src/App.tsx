@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import LandingPage from './components/LandingPage';
 import ExamSelector from './components/ExamSelector';
 import ProfileForm from './components/ProfileForm';
@@ -17,8 +18,11 @@ import { loadRealColleges, COLLEGES_SOURCE } from './data/colleges';
 type StepType = 'LANDING' | 'SELECT_EXAM' | 'ENTER_DETAILS' | 'ENTRY_WORKFLOW' | 'REFINEMENT' | 'FINAL_REVIEW' | 'SUCCESS';
 
 export default function App() {
-  // Administrative DB setup modal state
-  const [isAdminOpen, setIsAdminOpen] = useState(false);
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  // Administrative DB setup check based on URL path
+  const isAdminOpen = location.pathname === '/admin';
 
   // Dynamic DB Status state
   const [dbStatus, setDbStatus] = useState<{ loaded: boolean; count: number; source: string }>({
@@ -304,14 +308,6 @@ export default function App() {
                 </div>
               )}
 
-              <button 
-                onClick={() => setIsAdminOpen(true)}
-                className="flex items-center gap-1 sm:gap-1.5 px-2.5 py-1.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 rounded-lg text-[10px] sm:text-xs font-semibold font-mono transition-all cursor-pointer shadow-2xs shrink-0"
-              >
-                <Database className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">DATABASE </span>ADMIN
-              </button>
-
               {step !== 'LANDING' && step !== 'SUCCESS' && (
                 <button
                   onClick={handleSaveDraft}
@@ -345,7 +341,6 @@ export default function App() {
             {step === 'LANDING' && (
               <LandingPage 
                 onStart={() => setStep('SELECT_EXAM')} 
-                onAdminClick={() => setIsAdminOpen(true)}
               />
             )}
 
@@ -428,7 +423,7 @@ export default function App() {
       <React.Suspense fallback={null}>
         <AdminModal 
           isOpen={isAdminOpen} 
-          onClose={() => setIsAdminOpen(false)} 
+          onClose={() => navigate('/')} 
           onUploadSuccess={() => {
             loadRealColleges().then(count => {
               if (count > 0) {
