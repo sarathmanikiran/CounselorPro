@@ -82,6 +82,7 @@ export function mapRawToCollege(item: any, index: number, examType: string): any
   const typeMapped = isGovt ? 'Govt' : 'Private-Autonomous';
   const code = item.inst_code || item.code || 'UNKN';
   const branch = item.branch_code || item.branch || 'CSE';
+  const actualExam = item.exam || examType;
   
   // Extract proper cutoffs
   const rawCutoffOC = item.oc_boys || item.oc_girls || item.cutoffOC;
@@ -103,7 +104,7 @@ export function mapRawToCollege(item: any, index: number, examType: string): any
   const cutoffSCST = Number(rawCutoffSCST || 55000);
 
   return {
-    id: `${examType.toLowerCase()}-${(item.inst_code || item.code || 'col').toLowerCase()}-${(item.branch_code || item.branch || 'cse').toLowerCase()}-${index}`,
+    id: `${actualExam.toLowerCase()}-${(item.inst_code || item.code || 'col').toLowerCase()}-${(item.branch_code || item.branch || 'cse').toLowerCase()}-${index}`,
     code: item.inst_code || item.code || 'UNKN',
     name: item.institution_name || item.name || 'Unknown Institution',
     branch: item.branch_code || item.branch || 'CSE',
@@ -114,7 +115,7 @@ export function mapRawToCollege(item: any, index: number, examType: string): any
     cutoffBC,
     cutoffSCST,
     region: item.inst_region || item.region || 'AU',
-    exam: examType
+    exam: actualExam
   };
 }
 
