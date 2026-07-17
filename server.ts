@@ -467,10 +467,10 @@ app.post("/api/admin/upload-colleges", async (req, res) => {
 
     // B. Clear existing documents ONLY on the first chunk of the upload series (chunkIndex === 0)
     if (chunkIndex === 0) {
-      for (const comb of combinations) {
+      console.log(`Performing concurrent database clean-up for combinations: ${Array.from(combinations).join(', ')}...`);
+      const cleanPromises = Array.from(combinations).map(async (comb) => {
         const [combExam, combYearStr] = comb.split("|");
         const combYear = Number(combYearStr);
-        console.log(`Clearing stale database entries in "colleges" for ${combExam} (${combYear})...`);
         try {
           const existingSnapshot = await firestoreDb.collection("colleges")
             .where("exam", "==", combExam)
@@ -489,12 +489,13 @@ app.post("/api/admin/upload-colleges", async (req, res) => {
               deletePromises.push(deleteBatch.commit());
             }
             await Promise.all(deletePromises);
-            console.log(`Cleared ${existingSnapshot.size} stale database records in ${deletePromises.length} batches.`);
+            console.log(`Cleared ${existingSnapshot.size} stale database records in ${deletePromises.length} batches for ${combExam}.`);
           }
         } catch (clearErr: any) {
-          console.warn(`Non-blocking error during collection cleaning:`, clearErr.message);
+          console.warn(`Non-blocking error during collection cleaning for ${combExam}:`, clearErr.message);
         }
-      }
+      });
+      await Promise.all(cleanPromises);
     } else {
       console.log(`Skipping collection cleanup since chunkIndex is ${chunkIndex}.`);
     }
@@ -552,13 +553,18 @@ app.post("/api/admin/upload-colleges", async (req, res) => {
     // E. Automatically regenerate the static JSON files ONLY on the very last chunk (isLastChunk === true)
     let staticRegenMsg = "";
     if (isLastChunk) {
-      try {
-        await generateStaticData();
-        staticRegenMsg = "Static data JSON files were successfully regenerated inside /public/data/ on the local filesystem.";
-        console.log("Static files regenerated successfully following admin upload (last chunk processed).");
-      } catch (staticErr: any) {
-        staticRegenMsg = `Local static JSON regeneration bypassed or failed: ${staticErr.message}`;
-        console.warn("Failed to regenerate static files following upload:", staticErr.message);
+      if (process.env.VERCEL) {
+        staticRegenMsg = "Successfully completed database synchronization! Bypassed local static JSON regeneration on Vercel serverless runtime as files are read-only. A redeploy is required to rebuild static assets.";
+        console.log("Bypassed static files regeneration on Vercel runtime.");
+      } else {
+        try {
+          await generateStaticData();
+          staticRegenMsg = "Static data JSON files were successfully regenerated inside /public/data/ on the local filesystem.";
+          console.log("Static files regenerated successfully following admin upload (last chunk processed).");
+        } catch (staticErr: any) {
+          staticRegenMsg = `Local static JSON regeneration bypassed or failed: ${staticErr.message}`;
+          console.warn("Failed to regenerate static files following upload:", staticErr.message);
+        }
       }
     } else {
       staticRegenMsg = `Chunk ${chunkIndex + 1} uploaded successfully. Static JSON files will be regenerated after the last chunk is committed.`;

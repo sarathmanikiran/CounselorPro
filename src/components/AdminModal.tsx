@@ -179,9 +179,9 @@ export default function AdminModal({ isOpen, onClose, onUploadSuccess }: AdminMo
 
     setStatus('uploading');
     appendLog(`Initiating secure administrator pipeline...`);
-    appendLog(`Splitting dataset into chunks of 500 entries for safety...`);
+    appendLog(`Splitting dataset into chunks of 300 entries for safety...`);
 
-    const chunkSize = 500;
+    const chunkSize = 300;
     const totalChunks = Math.ceil(parsedData.length / chunkSize);
     appendLog(`Total chunks to process: ${totalChunks}`);
 
