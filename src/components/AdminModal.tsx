@@ -29,8 +29,6 @@ export default function AdminModal({ isOpen, onClose, onUploadSuccess }: AdminMo
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [idToken, setIdToken] = useState<string>('');
   const [isLoadingConfig, setIsLoadingConfig] = useState(true);
-  const [bypassPasscode, setBypassPasscode] = useState('');
-  const [showBypass, setShowBypass] = useState(false);
 
   // Load configuration and listen to authentication state
   useEffect(() => {
@@ -244,36 +242,11 @@ export default function AdminModal({ isOpen, onClose, onUploadSuccess }: AdminMo
       console.error('Google Auth Sign In error:', err);
       if (err.message?.includes('unauthorized-domain') || err.code?.includes('unauthorized-domain')) {
         setAuthError(`Firebase Error (auth/unauthorized-domain): The domain "${window.location.hostname}" is not authorized. To resolve this permanently, log into your Firebase Console -> Authentication -> Settings -> Authorized Domains and add "${window.location.hostname}".`);
-        setShowBypass(true);
       } else if (err.message?.includes('operation-not-allowed') || err.code?.includes('operation-not-allowed')) {
         setAuthError(`Firebase Error (auth/operation-not-allowed): Google Sign-In is not enabled as a sign-in provider in your Firebase project. To resolve this permanently, open your Firebase Console -> Authentication -> Sign-in method, click 'Add new provider', and enable 'Google'.`);
-        setShowBypass(true);
       } else {
         setAuthError(`Authentication Error: ${err.message || err}`);
-        setShowBypass(true);
       }
-    } finally {
-      setIsVerifying(false);
-    }
-  };
-
-  const handleBypassSignIn = (e: React.FormEvent) => {
-    e.preventDefault();
-    const cleanSecret = bypassPasscode.trim();
-    if (!cleanSecret) {
-      setAuthError('Please enter a valid developer passcode.');
-      return;
-    }
-    setIsVerifying(true);
-    try {
-      const email = 'sarathdasireddy369@gmail.com';
-      const mockToken = `dev_bypass_${email}_${cleanSecret}`;
-      setIdToken(mockToken);
-      setAdminEmail(email);
-      setAuthError('');
-      setShowBypass(false);
-    } catch (err: any) {
-      setAuthError(`Bypass failed: ${err.message}`);
     } finally {
       setIsVerifying(false);
     }
@@ -339,37 +312,9 @@ export default function AdminModal({ isOpen, onClose, onUploadSuccess }: AdminMo
               ) : (
                 <div className="max-w-md mx-auto space-y-5">
                   {authError && (
-                    <div className="p-3.5 bg-red-50 border border-red-100 text-red-800 rounded-xl text-xs flex flex-col gap-2.5 items-stretch font-sans leading-relaxed animate-fade-in" id="auth-error-alert">
-                      <div className="flex gap-2.5 items-start">
-                        <AlertCircle className="w-4.5 h-4.5 text-red-600 shrink-0 mt-0.5" />
-                        <span>{authError}</span>
-                      </div>
-                      {(authError.includes("unauthorized-domain") || authError.includes("operation-not-allowed")) && (
-                        <div className="mt-2 pt-2.5 border-t border-red-200/50 flex flex-col gap-2">
-                          <p className="text-[11px] text-red-700 font-medium leading-relaxed">
-                            💡 Working in an AI Studio / Run preview environment? Use the developer bypass to skip adding hostnames or enabling providers:
-                          </p>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const defaultSecret = "sarath_dev_secret_2025";
-                              setBypassPasscode(defaultSecret);
-                              setIsVerifying(true);
-                              const email = 'sarathdasireddy369@gmail.com';
-                              const mockToken = `dev_bypass_${email}_${defaultSecret}`;
-                              setIdToken(mockToken);
-                              setAdminEmail(email);
-                              setAuthError('');
-                              setShowBypass(false);
-                              setIsVerifying(false);
-                            }}
-                            className="py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs font-mono tracking-wide uppercase transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
-                          >
-                            <Key className="w-3.5 h-3.5 text-emerald-200" />
-                            <span>Instant Auto-Bypass & Authenticate</span>
-                          </button>
-                        </div>
-                      )}
+                    <div className="p-3.5 bg-red-50 border border-red-100 text-red-800 rounded-xl text-xs flex gap-2.5 items-start font-sans leading-relaxed animate-fade-in" id="auth-error-alert">
+                      <AlertCircle className="w-4.5 h-4.5 text-red-600 shrink-0 mt-0.5" />
+                      <span>{authError}</span>
                     </div>
                   )}
 
@@ -404,45 +349,7 @@ export default function AdminModal({ isOpen, onClose, onUploadSuccess }: AdminMo
                     </div>
                   )}
 
-                  {/* Developer Bypass Option */}
-                  <div className="pt-4 border-t border-slate-100 space-y-3">
-                    <button
-                      type="button"
-                      onClick={() => setShowBypass(!showBypass)}
-                      className="text-[10px] text-slate-500 hover:text-slate-700 font-semibold uppercase tracking-wider font-mono flex items-center gap-1.5 mx-auto transition-all cursor-pointer"
-                    >
-                      <Key className="w-3.5 h-3.5 text-slate-400" />
-                      <span>{showBypass ? "Hide Developer Options" : "Show Developer Bypass"}</span>
-                    </button>
 
-                    {showBypass && (
-                      <form onSubmit={handleBypassSignIn} className="bg-slate-50 border border-slate-200/80 rounded-xl p-4 space-y-3 animate-fade-in" id="dev-bypass-form">
-                        <div className="space-y-1">
-                          <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider font-mono block">Developer Bypass Passcode</label>
-                          <p className="text-[10px] text-slate-400 leading-normal">
-                            Bypass domain restrictions in temporary AI Studio/preview environments. Default passcode is <code className="bg-slate-200 px-1 py-0.5 rounded text-slate-700 font-mono text-[9px] select-all">sarath_dev_secret_2025</code>
-                          </p>
-                        </div>
-                        <div className="flex gap-2">
-                          <input
-                            type="password"
-                            value={bypassPasscode}
-                            onChange={(e) => setBypassPasscode(e.target.value)}
-                            placeholder="Enter DEV_BYPASS_SECRET..."
-                            className="flex-grow px-3 py-2 bg-white border border-slate-250 rounded-lg text-xs font-mono focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500"
-                            id="dev-bypass-passcode-input"
-                          />
-                          <button
-                            type="submit"
-                            disabled={isVerifying}
-                            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white font-bold rounded-lg text-[10px] font-mono tracking-wider uppercase transition-all shrink-0 cursor-pointer disabled:opacity-50"
-                          >
-                            Bypass & Auth
-                          </button>
-                        </div>
-                      </form>
-                    )}
-                  </div>
                 </div>
               )}
             </div>

@@ -36,8 +36,10 @@ export default function OptionEntry({ profile, selectedOptions, onUpdateOptions,
   }, [compareBId, collegesList]);
 
   const allExamColleges = useMemo(() => {
-    return collegesList.filter(c => c.exam === profile.exam).sort((a, b) => a.name.localeCompare(b.name));
-  }, [profile.exam, collegesList]);
+    return [...collegesList]
+      .filter(c => c && typeof c.name === 'string')
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [collegesList]);
 
   const handleCompareClick = (college: College) => {
     if (compareAId === college.id) {
@@ -92,9 +94,6 @@ export default function OptionEntry({ profile, selectedOptions, onUpdateOptions,
   // Filter colleges based on user profile's exam first, then other filters
   const filteredColleges = useMemo(() => {
     return collegesList.filter(col => {
-      // Must match the exam selected
-      if (col.exam !== profile.exam) return false;
-
       // Search term
       if (search && !col.name.toLowerCase().includes(search.toLowerCase()) && !col.code.toLowerCase().includes(search.toLowerCase())) {
         return false;
@@ -123,18 +122,18 @@ export default function OptionEntry({ profile, selectedOptions, onUpdateOptions,
 
       return true;
     });
-  }, [collegesList, profile.exam, search, selectedBranch, selectedDistrict, selectedType, selectedProb, profile.rank, profile.category]);
+  }, [collegesList, search, selectedBranch, selectedDistrict, selectedType, selectedProb, profile.rank, profile.category]);
 
   // List of distinct districts & branches in the current exam database for drop-down filters
   const distinctDistricts = useMemo(() => {
-    const districts = collegesList.filter(c => c.exam === profile.exam).map(c => c.district);
+    const districts = collegesList.map(c => c.district);
     return Array.from(new Set(districts)).sort();
-  }, [profile.exam, collegesList]);
+  }, [collegesList]);
 
   const distinctBranches = useMemo(() => {
-    const branches = collegesList.filter(c => c.exam === profile.exam).map(c => c.branch);
+    const branches = collegesList.map(c => c.branch);
     return Array.from(new Set(branches)).sort();
-  }, [profile.exam, collegesList]);
+  }, [collegesList]);
 
   // Add an option to the priority list
   const addOption = useCallback((college: College) => {

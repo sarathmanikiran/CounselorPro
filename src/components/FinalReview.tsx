@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { StudentProfile, WebOption, MockAllotmentResult } from '../types';
 import { COLLEGES_DB, getCollegeCutoff, getCollegesForStream } from '../data/colleges';
 import { ArrowLeft, CheckCircle2, Award, Download, Building, DollarSign, Calendar, FileText, Sparkles, HelpCircle, AlertTriangle } from 'lucide-react';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 interface FinalReviewProps {
   profile: StudentProfile;
@@ -75,6 +77,212 @@ export default function FinalReview({ profile, selectedOptions, onBack, onFinish
     document.body.removeChild(element);
   };
 
+  // Professional PDF report generator using jsPDF and jspdf-autotable
+  const handleDownloadPDF = () => {
+    try {
+      const doc = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4'
+      });
+
+      // Page dimensions
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+
+      // Top Border Accent (Dark Slate/Teal color scheme)
+      doc.setFillColor(15, 23, 42); // slate-900
+      doc.rect(0, 0, pageWidth, 6, 'F');
+
+      // Decorative header badge
+      doc.setFillColor(241, 245, 249); // slate-100
+      doc.roundedRect(pageWidth / 2 - 40, 10, 80, 8, 2, 2, 'F');
+      
+      doc.setFont('Helvetica', 'bold');
+      doc.setFontSize(8);
+      doc.setTextColor(100, 116, 139); // slate-500
+      doc.text("CONVENOR ADMISSIONS PORTAL (SIMULATION)", pageWidth / 2, 15, { align: 'center' });
+
+      // Title & Council
+      doc.setFont('Helvetica', 'bold');
+      doc.setFontSize(14);
+      doc.setTextColor(15, 23, 42); // slate-900
+      doc.text("STATE COUNCIL OF HIGHER EDUCATION", pageWidth / 2, 28, { align: 'center' });
+
+      doc.setFontSize(11);
+      doc.setTextColor(5, 150, 105); // emerald-600
+      doc.text("OFFICIAL REGISTERED WEB OPTIONS RECORD RECEIPT", pageWidth / 2, 34, { align: 'center' });
+
+      doc.setFont('Helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(148, 163, 184); // slate-400
+      doc.text(`Receipt ID: HT-${profile.hallTicket}-${new Date().getFullYear()} • Generated via CounselorPro`, pageWidth / 2, 39, { align: 'center' });
+
+      // Dividers
+      doc.setDrawColor(226, 232, 240); // slate-200
+      doc.setLineWidth(0.5);
+      doc.line(15, 43, pageWidth - 15, 43);
+
+      // Student Profile Metadata Box
+      doc.setFillColor(248, 250, 252); // slate-50
+      doc.setDrawColor(226, 232, 240); // slate-200
+      doc.roundedRect(15, 47, pageWidth - 30, 32, 2, 2, 'FD');
+
+      // Heading for student details
+      doc.setFont('Helvetica', 'bold');
+      doc.setFontSize(9);
+      doc.setTextColor(71, 85, 105); // slate-600
+      doc.text("CANDIDATE PROFILE DETAILS", 20, 53);
+
+      doc.setDrawColor(241, 245, 249);
+      doc.line(20, 55, pageWidth - 20, 55);
+
+      // Metadata Key-Value pairs
+      doc.setFont('Helvetica', 'bold');
+      doc.setFontSize(8);
+      doc.setTextColor(100, 116, 139); // slate-500
+      
+      // Col 1
+      doc.text("HALL TICKET NO:", 20, 61);
+      doc.text("SECURED RANK:", 20, 67);
+      doc.text("ENTRANCE EXAM:", 20, 73);
+
+      // Col 2
+      doc.text("RESERVATION CATEGORY:", 110, 61);
+      doc.text("LOCAL REGION:", 110, 67);
+      doc.text("SUBMISSION DATE:", 110, 73);
+
+      // Values
+      doc.setFont('Helvetica', 'bold');
+      doc.setFontSize(9);
+      doc.setTextColor(15, 23, 42); // slate-900
+      doc.text(String(profile.hallTicket || ''), 55, 61);
+      doc.text(Number(profile.rank || 0).toLocaleString(), 55, 67);
+      doc.text(String(profile.exam || '').replace('_', ' ') + ` (${profile.stream || ''})`, 55, 73);
+
+      doc.text(String(profile.category || ''), 155, 61);
+      doc.text(String(profile.region || ''), 155, 67);
+      doc.text(new Date().toLocaleDateString() + " " + new Date().toLocaleTimeString(), 155, 73);
+
+      // Table Title
+      doc.setFont('Helvetica', 'bold');
+      doc.setFontSize(11);
+      doc.setTextColor(15, 23, 42); // slate-900
+      doc.text("REGISTERED CHOICE SEQUENCE & PRIORITY ORDER", 15, 88);
+
+      // Options table
+      const tableHeaders = [['No.', 'Code', 'College/Institution Name', 'Branch', 'Annual Fee']];
+      const tableRows = selectedOptions.map(opt => [
+        String(opt.priority),
+        String(opt.collegeCode),
+        String(opt.collegeName),
+        String(opt.branch),
+        `Rs. ${Number(opt.fee).toLocaleString()}/-`
+      ]);
+
+      // Call autoTable helper
+      autoTable(doc, {
+        startY: 92,
+        margin: { left: 15, right: 15 },
+        head: tableHeaders,
+        body: tableRows,
+        theme: 'striped',
+        headStyles: {
+          fillColor: [15, 23, 42], // slate-900 theme
+          textColor: [255, 255, 255],
+          fontSize: 9,
+          fontStyle: 'bold',
+          halign: 'left'
+        },
+        columnStyles: {
+          0: { cellWidth: 12, halign: 'center', fontStyle: 'bold' }, // Priority
+          1: { cellWidth: 25, fontStyle: 'bold', textColor: [5, 150, 105] }, // Code (Emerald)
+          2: { cellWidth: 'auto' }, // Name
+          3: { cellWidth: 25, halign: 'center' }, // Branch
+          4: { cellWidth: 30, halign: 'right', fontStyle: 'bold' } // Fee
+        },
+        styles: {
+          fontSize: 8.5,
+          cellPadding: 3,
+          valign: 'middle'
+        },
+        alternateRowStyles: {
+          fillColor: [248, 250, 252] // slate-50
+        }
+      });
+
+      // Get Y coordinate after table
+      let finalY = (doc as any).lastAutoTable.finalY + 10;
+
+      // Check if signature box would overflow page height, if so start new page or handle gracefully
+      if (finalY + 45 > pageHeight) {
+        doc.addPage();
+        finalY = 20;
+      }
+
+      // Digital Integrity Footer Box
+      doc.setFillColor(248, 250, 252);
+      doc.setDrawColor(226, 232, 240);
+      doc.roundedRect(15, finalY, pageWidth - 30, 32, 2, 2, 'FD');
+
+      // Security Watermark Box (QR Code simulation)
+      doc.setFillColor(30, 41, 59); // slate-800
+      doc.rect(20, finalY + 4, 24, 24, 'F');
+      
+      // Draw grid pattern to simulate QR code
+      doc.setFillColor(255, 255, 255);
+      // Corners
+      doc.rect(22, finalY + 6, 6, 6, 'F');
+      doc.rect(36, finalY + 6, 6, 6, 'F');
+      doc.rect(22, finalY + 20, 6, 6, 'F');
+      doc.setFillColor(30, 41, 59);
+      doc.rect(24, finalY + 8, 2, 2, 'F');
+      doc.rect(38, finalY + 8, 2, 2, 'F');
+      doc.rect(24, finalY + 22, 2, 2, 'F');
+      // Random mock QR dots
+      doc.setFillColor(255, 255, 255);
+      doc.rect(30, finalY + 14, 2, 2, 'F');
+      doc.rect(34, finalY + 16, 2, 2, 'F');
+      doc.rect(28, finalY + 18, 2, 2, 'F');
+      doc.rect(32, finalY + 22, 4, 2, 'F');
+
+      // Integrity Details
+      doc.setFont('Helvetica', 'bold');
+      doc.setFontSize(8.5);
+      doc.setTextColor(5, 150, 105); // emerald-600
+      doc.text("SECURE PORTAL DIGITAL INTEGRITY VERIFIED", 48, finalY + 10);
+
+      doc.setFont('Helvetica', 'normal');
+      doc.setFontSize(7.5);
+      doc.setTextColor(100, 116, 139); // slate-500
+      doc.text("This counseling choice sheet is securely generated and locked by CounselorPro.", 48, finalY + 15);
+      doc.text("It has been formatted as an official counseling list document ready for physical reference.", 48, finalY + 19);
+      doc.text("Timestamp: " + new Date().toISOString() + " | Sign-hash: " + Math.random().toString(16).substring(2, 10).toUpperCase(), 48, finalY + 23);
+      doc.text("Status: VERIFIED ADMISSION SEQUENCE", 48, finalY + 27);
+
+      // Final signature line
+      doc.setFont('Helvetica', 'bold');
+      doc.setFontSize(7.5);
+      doc.setTextColor(15, 23, 42); // slate-900
+      doc.text("CONVENOR SIGNATURE", pageWidth - 55, finalY + 24, { align: 'center' });
+      doc.setDrawColor(203, 213, 225); // slate-300
+      doc.line(pageWidth - 75, finalY + 20, pageWidth - 15, finalY + 20);
+
+      // Page numbers & disclaimers at the absolute bottom
+      doc.setFont('Helvetica', 'normal');
+      doc.setFontSize(7);
+      doc.setTextColor(148, 163, 184); // slate-400
+      doc.text("Disclaimer: This is a simulated option slip. Keep this secure for your counseling practice sessions.", pageWidth / 2, pageHeight - 12, { align: 'center' });
+      doc.text("Page 1 of 1 • CounselorPro Web-Options System", pageWidth / 2, pageHeight - 8, { align: 'center' });
+
+      // Trigger standard save
+      doc.save(`${profile.hallTicket}_Counseling_Options.pdf`);
+    } catch (err: any) {
+      console.error("Failed to generate PDF:", err);
+      alert("An error occurred while generating the PDF: " + err.message);
+    }
+  };
+
   return (
     <div className="max-w-4xl mx-auto py-6 px-4" id="final-review-workspace">
       
@@ -104,14 +312,24 @@ export default function FinalReview({ profile, selectedOptions, onBack, onFinish
                 <h3 className="font-sans font-extrabold text-slate-900 text-lg">REGISTERED OPTIONS RECORD RECEIPT</h3>
                 <p className="text-xs font-mono text-slate-500">Receipt ID: HT-{profile.hallTicket}-{new Date().getFullYear()}</p>
               </div>
-              <button
-                onClick={handleDownloadSlip}
-                className="px-4 py-2 border border-slate-300 hover:bg-slate-100 text-slate-700 text-xs font-semibold rounded-lg shadow-2xs transition-all flex items-center gap-1.5 cursor-pointer"
-                title="Download Slip Text Document"
-              >
-                <Download className="w-3.5 h-3.5" />
-                Download Receipt Slip
-              </button>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={handleDownloadSlip}
+                  className="px-4 py-2 border border-slate-300 hover:bg-slate-100 text-slate-700 text-xs font-semibold rounded-lg shadow-2xs transition-all flex items-center gap-1.5 cursor-pointer"
+                  title="Download Slip Text Document"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  Download Plain TXT
+                </button>
+                <button
+                  onClick={handleDownloadPDF}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
+                  title="Download Official Counseling List PDF Document"
+                >
+                  <FileText className="w-3.5 h-3.5" />
+                  Download as PDF
+                </button>
+              </div>
             </div>
 
             {/* Student Metadata Strip */}

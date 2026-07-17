@@ -366,25 +366,13 @@ app.post("/api/admin/upload-colleges", async (req, res) => {
 
     const idToken = authHeader.substring(7);
 
-    let email = "";
-    if (idToken.startsWith("dev_bypass_")) {
-      const expectedSecret = process.env.DEV_BYPASS_SECRET || "sarath_dev_secret_2025";
-      const expectedToken = `dev_bypass_sarathdasireddy369@gmail.com_${expectedSecret}`;
-      if (idToken === expectedToken) {
-        email = "sarathdasireddy369@gmail.com";
-        console.log("Success: Authorized administrative action via developer bypass token.");
-      } else {
-        return res.status(403).json({ error: "Access Denied: Invalid Developer Bypass Passcode." });
-      }
-    } else {
-      if (!firestoreDb) {
-        return res.status(500).json({ error: "Server Error: Firebase environment variables are not configured on this server." });
-      }
-
-      // Verify the Firebase ID Token using firebase-admin Auth
-      const decodedToken = await getAuth().verifyIdToken(idToken);
-      email = decodedToken.email || "";
+    if (!firestoreDb) {
+      return res.status(500).json({ error: "Server Error: Firebase environment variables are not configured on this server." });
     }
+
+    // Verify the Firebase ID Token using firebase-admin Auth
+    const decodedToken = await getAuth().verifyIdToken(idToken);
+    const email = decodedToken.email || "";
 
     if (email !== "sarathdasireddy369@gmail.com") {
       return res.status(403).json({ error: `Access Denied: Account '${email}' is not authorized. Only sarathdasireddy369@gmail.com can modify the database.` });

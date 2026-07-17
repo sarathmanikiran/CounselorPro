@@ -6,6 +6,56 @@ export let COLLEGES_SOURCE = 'Initial State';
 // In-memory client-side cache to prevent multiple network requests for the same file (Requirement 5)
 const clientCache: Record<string, College[]> = {};
 
+function mapDistrictAbbr(dist: string): string {
+  const map: Record<string, string> = {
+    'VSKP': 'Visakhapatnam',
+    'EG': 'East Godavari',
+    'WG': 'West Godavari',
+    'ATP': 'Anantapur',
+    'CTR': 'Chittoor',
+    'KRI': 'Krishna',
+    'SKL': 'Srikakulam',
+    'GNT': 'Guntur',
+    'NLR': 'Nellore',
+    'VSP': 'Visakhapatnam',
+    'KST': 'Krishna',
+    'GTR': 'Guntur',
+    'NLR_': 'Nellore'
+  };
+  return map[(dist || "").toUpperCase()] || dist || "Unknown";
+}
+
+export function normalizeCollege(item: any, index: number): College {
+  const code = item.code || item.inst_code || 'UNKN';
+  const branch = item.branch || item.branch_code || 'CSE';
+  const isGovt = item.type === 'GOVT' || String(item.type).toUpperCase() === 'GOVT' || item.type === 'Govt';
+  const typeMapped = isGovt ? 'Govt' : (item.type === 'PVT' ? 'Private' : (item.type || 'Private-Autonomous'));
+  
+  const rawCutoffOC = item.cutoffOC || item.oc_boys || item.oc_girls;
+  const cutoffOC = Number(rawCutoffOC || 15000);
+
+  const rawCutoffBC = item.cutoffBC || item.bcb_boys || item.bca_boys || item.bcd_boys;
+  const cutoffBC = Number(rawCutoffBC || 25000);
+
+  const rawCutoffSCST = item.cutoffSCST || item.sc_boys || item.sc_girls || item.st_boys;
+  const cutoffSCST = Number(rawCutoffSCST || 55000);
+
+  return {
+    id: item.id || `${(item.exam || 'ap_eapcet').toLowerCase()}-${code.toLowerCase()}-${branch.toLowerCase()}-${index}`,
+    code,
+    name: item.name || item.institution_name || 'Unknown Institution',
+    branch,
+    district: mapDistrictAbbr(item.district || item.dist || 'OU'),
+    type: typeMapped,
+    fee: isGovt ? 35000 : (item.fee || 95000),
+    cutoffOC,
+    cutoffBC,
+    cutoffSCST,
+    region: item.region || item.inst_region || 'AU',
+    exam: item.exam || 'AP_EAPCET'
+  };
+}
+
 export function getExamGroup(exam: string | null, stream: 'MPC' | 'BiPC'): string {
   if (exam === 'AP_EAPCET') {
     return stream === 'BiPC' ? 'AP_EAPCET_BIPC' : 'AP_EAPCET_MPC';
@@ -41,12 +91,13 @@ export async function loadRealCollegesForExam(exam: ExamType | null, stream: 'MP
     }
     const data = await res.json();
     if (Array.isArray(data) && data.length > 0) {
-      clientCache[cacheKey] = data;
+      const normalized = data.map((item, idx) => normalizeCollege(item, idx));
+      clientCache[cacheKey] = normalized;
       COLLEGES_DB.length = 0;
-      COLLEGES_DB.push(...data);
+      COLLEGES_DB.push(...normalized);
       COLLEGES_SOURCE = `Static File (${examGroup}_${year})`;
-      console.log(`[CLIENT SUCCESS] Loaded and cached ${data.length} colleges from static JSON file.`);
-      return data.length;
+      console.log(`[CLIENT SUCCESS] Loaded and cached ${normalized.length} colleges from static JSON file.`);
+      return normalized.length;
     }
   } catch (err) {
     console.warn(`[CLIENT FETCH WARN] Failed to load static JSON /data/${examGroup}_${year}.json:`, err);
@@ -58,12 +109,13 @@ export async function loadRealCollegesForExam(exam: ExamType | null, stream: 'MP
       if (!res.ok) throw new Error('Dynamic API returned error');
       const data = await res.json();
       if (data && Array.isArray(data.colleges) && data.colleges.length > 0) {
-        clientCache[cacheKey] = data.colleges;
+        const normalized = data.colleges.map((item, idx) => normalizeCollege(item, idx));
+        clientCache[cacheKey] = normalized;
         COLLEGES_DB.length = 0;
-        COLLEGES_DB.push(...data.colleges);
+        COLLEGES_DB.push(...normalized);
         COLLEGES_SOURCE = data.source || 'Live Database Fallback';
-        console.log(`[CLIENT SUCCESS] Loaded and cached ${data.colleges.length} colleges from dynamic API fallback.`);
-        return data.colleges.length;
+        console.log(`[CLIENT SUCCESS] Loaded and cached ${normalized.length} colleges from dynamic API fallback.`);
+        return normalized.length;
       }
     } catch (apiErr) {
       console.error('[CLIENT FATAL] All college retrieval strategies failed:', apiErr);
